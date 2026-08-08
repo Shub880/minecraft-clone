@@ -1,0 +1,1032 @@
+/*
+ * Interface layer: menus, HUD, inventory and chat.
+ *
+ * Built on the tokens declared in base.css. Two rules run through everything
+ * here: the game is always visible behind the UI, so panels are translucent and
+ * blurred rather than opaque; and nothing in the HUD may capture the mouse,
+ * because the pointer is locked to the world — only the overlays that
+ * deliberately release the lock accept input.
+ */
+
+/* ============================================================ primitives === */
+
+.btn {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  letter-spacing: 0.01em;
+  padding: 0.72rem 1.25rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.btn--primary {
+  background: linear-gradient(180deg, var(--accent), var(--accent-dim));
+  border-color: transparent;
+  color: #08130a;
+  font-weight: 650;
+}
+
+.btn--primary:hover {
+  background: linear-gradient(180deg, #93da64, #67ab41);
+  border-color: transparent;
+}
+
+.btn--danger {
+  border-color: rgba(255, 122, 106, 0.35);
+  color: #ff9d8e;
+}
+
+.btn--danger:hover {
+  background: rgba(255, 122, 106, 0.14);
+  border-color: rgba(255, 122, 106, 0.5);
+}
+
+.btn--ghost {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: var(--ink-dim);
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(9rem, 15rem) 1fr;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+  padding: 0.55rem 0;
+}
+
+.field__label {
+  font-size: 0.9375rem;
+  color: var(--ink-dim);
+}
+
+.field__hint {
+  grid-column: 2;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.input,
+.select {
+  appearance: none;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9375rem;
+  padding: 0.6rem 0.75rem;
+}
+
+.select {
+  /* Room for the caret drawn by the background image. */
+  padding-right: 2rem;
+  background-image: linear-gradient(45deg, transparent 50%, var(--ink-dim) 50%),
+    linear-gradient(135deg, var(--ink-dim) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+  box-shadow: 0 0 0 3px rgba(126, 200, 80, 0.18);
+}
+
+.slider {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.slider__input {
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+
+.slider__input::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #0d1218;
+  cursor: pointer;
+}
+
+.slider__input::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: 2px solid #0d1218;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.slider__value {
+  min-width: 5.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.875rem;
+  color: var(--ink-dim);
+}
+
+.toggle {
+  appearance: none;
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  justify-self: start;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.toggle.is-on {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.toggle__knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--ink);
+  transition: transform 0.18s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.toggle.is-on .toggle__knob {
+  transform: translateX(20px);
+}
+
+/* ================================================================= menu === */
+
+/*
+ * `safe center` centres the panel but falls back to the start edge when the
+ * panel is taller than the viewport. Plain centring overflows equally in both
+ * directions, which puts the top of a tall panel above the scroll origin where
+ * it can never be reached.
+ */
+.menu {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  align-content: safe center;
+  justify-items: center;
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+}
+
+/*
+ * Light enough that the living world behind the title still reads as a world.
+ * The panel itself carries the contrast, so the backdrop only has to keep the
+ * sky from competing with the buttons.
+ */
+.menu__backdrop {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(90% 70% at 50% 45%, rgba(4, 7, 12, 0.72), rgba(4, 6, 10, 0.42)),
+    linear-gradient(180deg, rgba(4, 6, 10, 0.24), rgba(4, 6, 10, 0.46));
+  backdrop-filter: blur(2px) saturate(0.95);
+}
+
+/* The pause menu blurs harder: the world behind it is frozen, not scenery. */
+.menu--pause .menu__backdrop {
+  backdrop-filter: blur(9px) saturate(0.8);
+  background: rgba(4, 6, 10, 0.6);
+}
+
+/* Sizing lives on the panels, not the container, so a wide screen can grow
+   past the default without overflowing a fixed-width wrapper. */
+.menu__content {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.panel {
+  width: min(92vw, 560px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background: rgba(14, 18, 25, 0.82);
+  box-shadow: var(--shadow-lift);
+  padding: 1.75rem;
+  animation: panel-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.panel--wide {
+  width: min(92vw, 780px);
+}
+
+/*
+ * Movement only, deliberately: nothing about whether a panel is *visible* may
+ * depend on an animation running. A compositor that defers or drops the
+ * animation should leave a panel slightly offset, never invisible.
+ */
+@keyframes panel-in {
+  from { transform: translateY(10px) scale(0.985); }
+  to { transform: none; }
+}
+
+.panel--title,
+.panel--pause {
+  width: min(92vw, 480px);
+  background: rgba(12, 16, 22, 0.72);
+  text-align: center;
+  padding: 2.5rem 2rem;
+}
+
+.panel__head {
+  margin-bottom: 1.25rem;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.panel__subtitle {
+  margin: 0.45rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+.panel__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel__foot,
+.panel__actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.panel__note {
+  margin: 1.25rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--ink-faint);
+}
+
+.brand__name {
+  margin: 0;
+  font-size: clamp(2.5rem, 9vw, 4rem);
+  font-weight: 800;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  text-shadow: 0 4px 40px rgba(126, 200, 80, 0.3);
+}
+
+.brand__tag {
+  margin: 0.5rem 0 0;
+  font-size: 0.9375rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.06em;
+}
+
+.menu__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  margin-top: 2rem;
+}
+
+.menu__actions .btn {
+  padding: 0.85rem 1.25rem;
+  font-size: 1rem;
+}
+
+.menu__footer {
+  margin: 1.75rem 0 0;
+  font-size: 0.75rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+
+/* --------------------------------------------------------- world list --- */
+
+.worlds {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  max-height: min(52vh, 26rem);
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.world {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.world--confirm {
+  border-color: rgba(255, 122, 106, 0.35);
+  background: rgba(255, 122, 106, 0.08);
+}
+
+.world__name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.world__meta,
+.world__time {
+  margin: 0.2rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--ink-faint);
+}
+
+.world__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.world__actions .btn {
+  padding: 0.5rem 0.9rem;
+  font-size: 0.875rem;
+}
+
+.worlds__empty {
+  margin: 0;
+  padding: 2rem 0;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 0.9375rem;
+}
+
+/* ----------------------------------------------------------- settings --- */
+
+.settings__group + .settings__group {
+  margin-top: 1.75rem;
+}
+
+.settings__heading {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.keygrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.4rem 1.25rem;
+}
+
+.keyrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.35rem 0;
+}
+
+.keyrow__label {
+  font-size: 0.9375rem;
+  color: var(--ink-dim);
+}
+
+.keybind {
+  appearance: none;
+  min-width: 6.5rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.34);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-family: var(--font-mono);
+  cursor: pointer;
+}
+
+.keybind:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.keybind.is-listening {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% { opacity: 0.55; }
+}
+
+.helplist {
+  display: grid;
+  grid-template-columns: minmax(7rem, 10rem) 1fr;
+  gap: 0.55rem 1.25rem;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.helplist dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.helplist dd {
+  margin: 0;
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+
+/* ================================================================== hud === */
+
+.hud__bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.item-label {
+  font-size: 0.9375rem;
+  font-weight: 550;
+  color: var(--ink);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.item-label.is-visible {
+  opacity: 1;
+}
+
+.vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: center;
+}
+
+.vitals__row {
+  display: flex;
+  gap: 3px;
+}
+
+.pip {
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+
+/* Hearts and bubbles are drawn with clip-path rather than glyphs so they are
+   pixel-consistent across platforms and need no font fallback. */
+.pip--heart {
+  clip-path: polygon(50% 100%, 6% 52%, 0 30%, 12% 8%, 32% 6%, 50% 24%, 68% 6%, 88% 8%, 100% 30%, 94% 52%);
+  background: #3a1414;
+}
+
+.pip--heart[data-state="full"] { background: #e8404a; }
+.pip--heart[data-state="half"] { background: linear-gradient(90deg, #e8404a 50%, #3a1414 50%); }
+
+.pip--bubble {
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.pip--bubble[data-state="full"] {
+  background: radial-gradient(circle at 35% 30%, #eaf6ff, #4fa7e8 70%);
+}
+
+.vitals__row.is-critical {
+  animation: heartbeat 0.9s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+  50% { transform: scale(1.08); }
+}
+
+/* ------------------------------------------------------------- hotbar --- */
+
+.hotbar {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(8, 11, 16, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.slot {
+  position: relative;
+  width: 50px;
+  height: 50px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  display: grid;
+  place-items: center;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+}
+
+.slot.is-selected {
+  border-color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.14);
+  transform: translateY(-3px);
+}
+
+.slot__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  pointer-events: none;
+}
+
+.slot__icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.slot__count {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  pointer-events: none;
+}
+
+.slot__key {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: 0.625rem;
+  color: rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------- toasts and effects --- */
+
+.toasts {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.toast {
+  padding: 0.45rem 0.95rem;
+  border-radius: 999px;
+  background: rgba(8, 11, 16, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  backdrop-filter: blur(8px);
+  font-size: 0.875rem;
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.toast.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.toast--error {
+  border-color: rgba(255, 122, 106, 0.4);
+  color: #ff9d8e;
+}
+
+.fps-counter {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+  text-shadow: 0 1px 3px #000;
+}
+
+.overlay-effect {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.overlay-effect--damage {
+  background: radial-gradient(110% 90% at 50% 50%, transparent 42%, rgba(180, 20, 20, 0.62) 100%);
+  transition: opacity 0.1s ease;
+}
+
+.overlay-effect--water {
+  background: linear-gradient(180deg, rgba(20, 70, 130, 0.42), rgba(10, 40, 90, 0.5));
+  box-shadow: inset 0 0 180px rgba(0, 20, 50, 0.7);
+}
+
+.overlay-effect--lava {
+  background: linear-gradient(180deg, rgba(180, 60, 10, 0.7), rgba(120, 25, 0, 0.85));
+}
+
+.death-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.5rem;
+  background: rgba(70, 8, 8, 0.45);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+  text-align: center;
+}
+
+.death__title {
+  margin: 0;
+  font-size: 2.5rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  color: #ffb0a4;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.8);
+}
+
+.death__cause {
+  margin: 0 0 1rem;
+  color: var(--ink-dim);
+}
+
+.death__actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+/* =========================================================== inventory === */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: grid;
+  align-content: safe center;
+  justify-items: center;
+  padding: 2rem 1.5rem;
+  overflow-y: auto;
+}
+
+/*
+ * The blur lives on a dedicated child, never on the panel's parent. A
+ * `backdrop-filter` ancestor changes how its descendants are composited, and
+ * an opacity animation inside one can end up stuck on its opening keyframe —
+ * which hides the panel completely. The menu is structured the same way.
+ */
+.modal__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.inv {
+  width: min(94vw, 720px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background: rgba(14, 18, 25, 0.9);
+  box-shadow: var(--shadow-lift);
+  padding: 1.35rem;
+  animation: panel-in 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.inv__head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.inv__title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 650;
+  flex-shrink: 0;
+}
+
+.inv__search {
+  flex: 1;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.45rem 0.9rem;
+}
+
+.inv__search:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+.inv__close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--ink-faint);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+}
+
+.inv__close:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.inv__tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.85rem;
+}
+
+.tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.35rem 0.85rem;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
+.tab.is-active {
+  background: rgba(126, 200, 80, 0.16);
+  border-color: rgba(126, 200, 80, 0.4);
+  color: var(--accent);
+}
+
+.inv__section-label {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 1rem 0 0.5rem;
+}
+
+.inv__grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 4px;
+}
+
+.inv__grid--palette {
+  grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+  max-height: min(42vh, 22rem);
+  overflow-y: auto;
+  padding-right: 0.35rem;
+}
+
+.slot--cell,
+.slot--palette {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+  cursor: pointer;
+}
+
+.slot--cell:hover,
+.slot--palette:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.inv__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--ink-faint);
+  padding: 1.5rem 0;
+  margin: 0;
+}
+
+.inv__hint {
+  margin: 1rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--ink-faint);
+}
+
+.carry {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.7));
+}
+
+.carry img {
+  width: 40px;
+  height: 40px;
+  display: block;
+}
+
+/* ================================================================ chat === */
+
+.chat {
+  position: fixed;
+  left: 14px;
+  bottom: 96px;
+  z-index: 40;
+  width: min(46rem, 60vw);
+  pointer-events: none;
+}
+
+.chat__log {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 30vh;
+  overflow-y: auto;
+  margin-bottom: 6px;
+}
+
+.chat.is-open {
+  pointer-events: auto;
+}
+
+.chat.is-open .chat__log {
+  background: rgba(8, 11, 16, 0.6);
+  border-radius: 8px;
+  padding: 6px 8px;
+  backdrop-filter: blur(6px);
+}
+
+.chat__line {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--ink);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  white-space: pre-wrap;
+  transition: opacity 0.4s linear;
+}
+
+.chat__line--ok { color: #b7e79a; }
+.chat__line--error { color: #ff9d8e; }
+.chat__line--chat { color: var(--ink); }
+
+.chat__row {
+  display: flex;
+}
+
+.chat__input {
+  flex: 1;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(8, 11, 16, 0.85);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.875rem;
+  padding: 0.5rem 0.7rem;
+  backdrop-filter: blur(6px);
+}
+
+.chat__input:focus {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
+/* ========================================================== responsive === */
+
+.noscript {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  padding: 2rem;
+  background: var(--surface-0);
+  color: var(--ink);
+  font-family: var(--font-ui);
+}
+
+@media (max-width: 720px) {
+  .field {
+    grid-template-columns: 1fr;
+  }
+
+  .field__hint {
+    grid-column: 1;
+  }
+
+  .world {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .slot {
+    width: 40px;
+    height: 40px;
+  }
+
+  .slot__icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  .chat {
+    width: calc(100vw - 28px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .inv,
+  .vitals__row.is-critical,
+  .keybind.is-listening {
+    animation: none;
+  }
+
+  .btn,
+  .toast,
+  .slot,
+  .toggle__knob {
+    transition: none;
+  }
+}

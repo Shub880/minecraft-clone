@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="An infinite procedurally generated voxel sandbox that runs entirely in the browser.">
+  <title>Voxel — an infinite block sandbox</title>
+  <link rel="stylesheet" href="./src/ui/styles/base.css">
+  <link rel="stylesheet" href="./src/ui/styles/ui.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23558b3f'/><rect y='4' width='16' height='12' fill='%237a5230'/></svg>">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- Boot and world-loading screen. Reused for every long operation. -->
+  <div id="boot" class="boot">
+    <div class="boot__inner">
+      <div class="boot__logo" id="boot-title">VOXEL</div>
+      <div class="boot__bar"><div class="boot__fill" id="boot-fill"></div></div>
+      <div class="boot__status" id="boot-status">Starting up</div>
+    </div>
+  </div>
+
+  <!-- Every menu screen renders into here. -->
+  <div id="menu" class="menu hidden"></div>
+
+  <!-- Built by ui/hud.js: crosshair, hotbar, vitals, toasts, overlays. -->
+  <div id="hud" class="hud hidden"></div>
+
+  <!-- Inventory / creative block palette. -->
+  <div id="inventory" class="modal hidden"></div>
+
+  <!-- Chat log and command console. -->
+  <div id="chat" class="chat"></div>
+
+  <noscript>
+    <div class="noscript">
+      <h1>JavaScript required</h1>
+      <p>This game renders its world with WebGL 2 and needs JavaScript enabled to run.</p>
+    </div>
+  </noscript>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

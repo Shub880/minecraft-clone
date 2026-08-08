@@ -1,0 +1,13 @@
+# OS and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local tooling state
+.claude/settings.local.json
+
+# Screenshots saved by the in-game F2 key, if run from the repo folder
+voxel-*.png

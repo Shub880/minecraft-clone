@@ -1,0 +1,86 @@
+# Voxel
+
+An infinite, procedurally generated block sandbox that runs entirely in the
+browser. No build step, no bundler, no image or audio assets — every texture is
+painted and every sound is synthesised at runtime, so the whole game is the
+files in this repository plus one copy of Three.js.
+
+## Running it
+
+The game uses ES modules and an import map, so it has to be served over HTTP
+rather than opened as a file:
+
+```sh
+python3 -m http.server 8080
+# then open http://localhost:8080
+```
+
+Requires a browser with WebGL 2 (`sampler2DArray` is used for the block atlas).
+
+## Playing
+
+| Action | Control |
+| --- | --- |
+| Move | `W` `A` `S` `D` |
+| Jump / fly up | `Space` |
+| Sneak / fly down | `Shift` — you will not walk off a ledge while sneaking |
+| Sprint | `Ctrl` |
+| Fly (creative) | double-tap `Space` |
+| Mine | hold left mouse |
+| Place | right mouse |
+| Pick block | middle mouse |
+| Hotbar | scroll, or `1`–`9` |
+| Inventory / block palette | `E` |
+| Chat and commands | `T` and `/` |
+| Change view | `F5` |
+| Debug overlay | `F3` |
+| Screenshot | `F2` |
+| Pause | `Esc` |
+
+Commands include `/tp`, `/gamemode`, `/time`, `/give`, `/rd`, `/seed` and
+`/help`.
+
+**Survival** costs you blocks to build with, and fall, lava, drowning and void
+damage are live. **Creative** gives you every block, flight and no damage.
+
+Worlds are saved to IndexedDB in your browser. Only your *edits* are stored —
+terrain is a pure function of the seed, so regenerating it is faster and far
+smaller than reading it back.
+
+## Layout
+
+```
+src/
+  core/        renderer, input, settings, audio synthesis, IndexedDB saves
+  world/       chunk storage, lighting, streaming, terrain generation
+  render/      texture painting, greedy mesher, materials, sky, box models
+  entity/      player physics and the third-person avatar
+  game/        session orchestration, interaction, inventory, particles
+  ui/          menus, HUD, inventory screen, chat, debug overlay
+```
+
+A few pieces are worth knowing about before changing anything:
+
+- **`render/mesher.js`** has no Three.js or DOM references by design. It takes
+  typed arrays in and returns typed arrays out so the same code can run in a
+  worker later.
+- **`world/lighting.js`** computes a chunk's light in isolation; that is only
+  correct for generation. **`world/light-update.js`** owns everything after
+  that — incremental edits and light crossing chunk seams.
+- **`world/constants.js`** has no imports at all, so workers can pull in the
+  world dimensions without dragging in the renderer.
+- Sky, fog and world lighting all read from **`render/sky.js`**, which is the
+  single source of truth for time of day.
+
+## Not implemented
+
+Deliberate omissions, so nothing here reads as a bug:
+
+- No crafting or tools. Mining speed depends on block hardness alone.
+- No mobs, and no dropped-item entities — mined blocks go straight to the
+  inventory, and dropping an item discards it.
+- No fluid simulation. Water and lava are static blocks; placing water gives
+  you one block of water, not a flow.
+- Chunk generation and meshing run on the main thread under a per-frame time
+  budget. The mesher is written to be worker-ready if that budget ever stops
+  being enough.

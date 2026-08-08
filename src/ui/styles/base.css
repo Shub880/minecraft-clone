@@ -1,0 +1,210 @@
+/*
+ * Base layer: resets, design tokens, the boot screen and the always-on parts
+ * of the HUD. Everything else — menus, inventory, chat, hotbar — is in ui.css.
+ */
+
+:root {
+  --ink: #f2f5f8;
+  --ink-dim: #a8b2bd;
+  --ink-faint: #6c7883;
+
+  --surface-0: #0b0e12;
+  --surface-1: #141922;
+  --surface-2: #1e2530;
+
+  --accent: #7ec850;
+  --accent-dim: #5a9a38;
+
+  --radius: 10px;
+  --shadow-lift: 0 8px 32px rgba(0, 0, 0, 0.55);
+
+  --font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--surface-0);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+#game {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------------------------------------------------------------- boot --- */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background:
+    radial-gradient(120% 80% at 50% 0%, #1b2740 0%, transparent 60%),
+    linear-gradient(180deg, #0d1119 0%, #070a0e 100%);
+  z-index: 100;
+  transition: opacity 0.55s ease;
+}
+
+.boot.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.boot__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  width: min(420px, 80vw);
+}
+
+.boot__logo {
+  font-size: clamp(2rem, 7vw, 3.25rem);
+  font-weight: 800;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: var(--ink);
+  text-shadow: 0 2px 24px rgba(126, 200, 80, 0.35);
+}
+
+.boot__bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+.boot__fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  transition: width 0.25s ease;
+}
+
+.boot__status {
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  text-align: center;
+  max-width: 40ch;
+}
+
+.boot__status.is-error {
+  color: #ff9d8e;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+/* ----------------------------------------------------------------- hud --- */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  transform: translate(-50%, -50%);
+  opacity: 0.85;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  background: #fff;
+  /* Difference blending keeps the crosshair readable on any background. */
+  mix-blend-mode: difference;
+}
+
+.crosshair::before {
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  transform: translateX(-50%);
+}
+
+.crosshair::after {
+  top: 50%;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  transform: translateY(-50%);
+}
+
+.debug {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: rgba(6, 9, 13, 0.68);
+  backdrop-filter: blur(8px);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--ink-dim);
+  white-space: pre;
+  max-width: 46ch;
+}
+
+.debug b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.hint {
+  position: absolute;
+  left: 50%;
+  /* Clears the hotbar and vitals, which own the bottom of the screen. */
+  bottom: 132px;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 2rem);
+  text-align: center;
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: rgba(6, 9, 13, 0.6);
+  backdrop-filter: blur(8px);
+  font-size: 0.8125rem;
+  color: var(--ink-dim);
+  white-space: nowrap;
+  transition: opacity 0.4s ease;
+}
+
+.hint.is-hidden {
+  opacity: 0;
+}
