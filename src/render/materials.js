@@ -80,11 +80,60 @@ const VERTEX_SHADER = /* glsl */ `
   }
 `;
 
+/**
+ * Shared lighting, in one string so the three passes cannot drift apart.
+ *
+ * The tangent frame is rebuilt per pixel from screen-space derivatives rather
+ * than read from a vertex attribute. Greedy meshing means one quad can cover a
+ * hundred blocks with UVs running 0..100, and the mesher would have to emit and
+ * the GPU carry a tangent per vertex to say the same thing this says in four
+ * instructions — using data the rasteriser already has.
+ */
+const LIGHTING_CHUNK = /* glsl */ `
+  uniform sampler2DArray uSurface;
+  uniform float uSpecular;
+
+  /** Tangent-space normal to world space, without a tangent attribute. */
+  vec3 applyRelief(vec3 geometryNormal, vec3 tangentNormal) {
+    vec3 dpx = dFdx(vWorldPos);
+    vec3 dpy = dFdy(vWorldPos);
+    vec2 duvx = dFdx(vUv);
+    vec2 duvy = dFdy(vUv);
+
+    vec3 t = dpx * duvy.y - dpy * duvx.y;
+    vec3 b = -dpx * duvy.x + dpy * duvx.x;
+    float scale = inversesqrt(max(dot(t, t), dot(b, b)));
+    if (!(scale < 3.4e38)) return geometryNormal;
+
+    mat3 frame = mat3(t * scale, b * scale, geometryNormal);
+    return normalize(frame * tangentNormal);
+  }
+
+  /**
+   * Blinn-Phong, with the exponent driven by the surface's roughness.
+   *
+   * Gated on skylight rather than applied everywhere: a sun highlight inside a
+   * cave gives away that this is a light model rather than a light.
+   */
+  float sunSpecular(vec3 normal, vec3 viewDir, float roughness, float sky) {
+    if (sky <= 0.001) return 0.0;
+    float shininess = mix(180.0, 3.0, roughness * roughness);
+    vec3 halfway = normalize(uSunDirection - viewDir);
+    float spec = pow(max(dot(normal, halfway), 0.0), shininess);
+    // Normalisation, so a tight highlight is bright and a broad one is not
+    // simply the same energy smeared out.
+    return spec * (shininess + 8.0) / 40.0 * (1.0 - roughness) * sky;
+  }
+`;
+
 const FRAGMENT_SHADER = /* glsl */ `
   precision highp float;
   precision highp sampler2DArray;
 
   uniform sampler2DArray uAtlas;
+  // Shared with the vertex stage: the water highlight has to be computed from
+  // the same clock that displaced the surface, or it slides off the waves.
+  uniform float uTime;
   uniform vec3 uSunDirection;
   uniform vec3 uSunColor;
   uniform vec3 uAmbientColor;
@@ -106,6 +155,10 @@ const FRAGMENT_SHADER = /* glsl */ `
   varying float vFace;
   varying vec3 vWorldPos;
   varying float vViewDepth;
+
+  #ifdef FANCY
+    ${LIGHTING_CHUNK}
+  #endif
 
   // Index 6 is the "flat" face used by plants: no directional shading.
   const vec3 FACE_NORMALS[7] = vec3[7](
@@ -141,7 +194,8 @@ const FRAGMENT_SHADER = /* glsl */ `
     #endif
 
     int face = int(vFace + 0.5);
-    vec3 normal = FACE_NORMALS[face];
+    vec3 geometryNormal = FACE_NORMALS[face];
+    vec3 normal = geometryNormal;
     float facet = FACE_SHADE[face];
 
     // Light levels are perceptually non-linear; squaring keeps caves genuinely
@@ -149,6 +203,21 @@ const FRAGMENT_SHADER = /* glsl */ `
     float sky = vSky * uDaylight;
     sky = sky * sky * 0.75 + sky * 0.25;
     float torch = vBlock * vBlock * 0.8 + vBlock * 0.2;
+
+    float roughness = 1.0;
+    float emissive = 0.0;
+    vec3 viewDir = normalize(vWorldPos - cameraPosition);
+
+    #ifdef FANCY
+      vec4 surface = texture(uSurface, vec3(vUv, vLayer));
+      roughness = surface.b;
+      emissive = surface.a;
+      vec2 relief = surface.rg * 2.0 - 1.0;
+      vec3 tangentNormal = normalize(vec3(relief, sqrt(max(1.0 - dot(relief, relief), 0.0))));
+      // Plants are flat cards standing in for volume; bending their normals
+      // only makes the illusion worse.
+      if (face != 6) normal = applyRelief(geometryNormal, tangentNormal);
+    #endif
 
     float sunDot = max(dot(normal, uSunDirection), 0.0);
     float direct = 0.6 + 0.4 * sunDot;
@@ -160,10 +229,38 @@ const FRAGMENT_SHADER = /* glsl */ `
     lighting *= vAO * uBrightness;
 
     vec3 color = albedo * lighting;
+
+    #ifdef FANCY
+      // Specular is added, not mixed: a highlight is light arriving on top of
+      // what the surface already reflects, and mixing would darken the albedo
+      // wherever the sun happens to catch it.
+      color += uSunColor * sunSpecular(normal, viewDir, roughness, sky)
+             * uSpecular * vAO * facet;
+      // Emissive ignores sky and block light — that is the whole point of it —
+      // but still respects brightness so the setting stays meaningful.
+      color += albedo * emissive * 2.6 * uBrightness;
+    #endif
+
     float alpha = 1.0;
 
     #ifdef WATER
-      vec3 viewDir = normalize(vWorldPos - cameraPosition);
+      #ifdef FANCY
+        // The wave normal is the analytic derivative of the displacement the
+        // vertex stage applied, so the highlight tracks the crests it is
+        // supposed to be sitting on instead of drifting across them. Only the
+        // top face is displaced, so only the top face is re-normalled.
+        if (face == 2) {
+          float slopeX =
+            cos(vWorldPos.x * 0.55 + uTime * 1.1) * 0.55 * 0.5 +
+            cos((vWorldPos.x + vWorldPos.z) * 0.27 + uTime * 1.6) * 0.27 * 0.35;
+          float slopeZ =
+            cos(vWorldPos.z * 0.42 - uTime * 0.83) * 0.42 * 0.5 +
+            cos((vWorldPos.x + vWorldPos.z) * 0.27 + uTime * 1.6) * 0.27 * 0.35;
+          normal = normalize(vec3(-slopeX * 0.045 * 8.0, 1.0, -slopeZ * 0.045 * 8.0));
+        }
+        float glint = sunSpecular(normal, viewDir, 0.04, sky);
+        color += uSunColor * glint * uSpecular * 1.6 * (1.0 - uUnderwater);
+      #endif
       // Fresnel: water turns reflective and bright at grazing angles, which is
       // what makes a lake read as a surface rather than a blue floor.
       float fresnel = pow(1.0 - abs(dot(viewDir, normal)), 3.0);
@@ -176,8 +273,7 @@ const FRAGMENT_SHADER = /* glsl */ `
 
     // Height-graded fog matched to the sky gradient, so the horizon dissolves
     // instead of terminating in a visible wall of flat colour.
-    vec3 viewRay = normalize(vWorldPos - cameraPosition);
-    float horizon = clamp(viewRay.y * 0.5 + 0.5, 0.0, 1.0);
+    float horizon = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
     vec3 fogColor = mix(uFogHorizon, uFogZenith, horizon * horizon);
 
     float d = vViewDepth * uFogDensity;
@@ -202,9 +298,16 @@ const FRAGMENT_SHADER = /* glsl */ `
  * Update the uniforms once per frame via the setters at the bottom.
  */
 export class WorldMaterials {
-  constructor(atlasTexture) {
+  /**
+   * @param {THREE.DataArrayTexture} atlasTexture   colour
+   * @param {THREE.DataArrayTexture} [surfaceTexture]  normal, roughness, emissive
+   */
+  constructor(atlasTexture, surfaceTexture = null) {
+    this.fancy = true;
     this.uniforms = {
       uAtlas: { value: atlasTexture },
+      uSurface: { value: surfaceTexture },
+      uSpecular: { value: 1 },
       uTime: { value: 0 },
       uWindStrength: { value: 0.06 },
       uSunDirection: { value: new THREE.Vector3(0.4, 0.8, 0.3).normalize() },
@@ -229,6 +332,7 @@ export class WorldMaterials {
     const defines = {};
     if (mode === 'cutout') defines.CUTOUT = '';
     if (mode === 'water') defines.WATER = '';
+    if (this.fancy) defines.FANCY = '';
 
     const material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -244,6 +348,30 @@ export class WorldMaterials {
     });
     material.name = `chunk-${mode}`;
     return material;
+  }
+
+  /**
+   * Turn the per-pixel lighting on or off.
+   *
+   * The relief, the sun highlight and the emissive pass all live behind one
+   * define, so switching quality recompiles three shaders and changes nothing
+   * else — the materials themselves are the same objects, and every chunk mesh
+   * already pointing at them stays valid.
+   */
+  setFancy(enabled) {
+    const next = Boolean(enabled);
+    if (next === this.fancy) return;
+    this.fancy = next;
+    for (const material of [this.opaque, this.cutout, this.water]) {
+      if (next) material.defines.FANCY = '';
+      else delete material.defines.FANCY;
+      material.needsUpdate = true;
+    }
+  }
+
+  /** Strength of the sun highlight, 0 to switch it off without losing relief. */
+  setSpecular(strength) {
+    this.uniforms.uSpecular.value = Number.isFinite(strength) ? strength : 1;
   }
 
   /** Advance animated effects. `time` is in seconds. */

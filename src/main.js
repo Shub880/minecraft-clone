@@ -79,6 +79,7 @@ class App {
     this.settings.subscribe((key) => {
       if (key === 'sensitivity' || key === 'invertY' || key === 'bindings') this.applyInputSettings();
       if (key === 'resolutionScale') this.engine.setRenderScale(this.settings.get('resolutionScale'));
+      if (key === 'graphics') this.materials.setFancy(this.settings.get('graphics') !== 'fast');
       if (key === 'touchMode' || key === 'touchSwapSides') this.applyMobileMode();
     });
 
@@ -88,7 +89,8 @@ class App {
 
     this.setProgress(0.34, 'Compiling shaders');
     await nextFrame();
-    this.materials = new WorldMaterials(this.atlas.texture);
+    this.materials = new WorldMaterials(this.atlas.texture, this.atlas.surface);
+    this.materials.setFancy(this.settings.get('graphics') !== 'fast');
     this.materials.setBrightness(this.settings.get('brightness'));
     this.materials.setWind(this.settings.get('wind'));
     this.sky = new Sky(this.engine.scene);
@@ -140,6 +142,10 @@ class App {
     if (this.settings.restored || !isTouchDevice()) return;
     this.settings.set('renderDistance', 6);
     this.settings.set('resolutionScale', 0.75);
+    // Per-pixel lighting is the most expensive thing in the frame and the
+    // least affordable on a phone. It is one tap away in Settings for anyone
+    // whose device can carry it.
+    this.settings.set('graphics', 'fast');
   }
 
   /**
