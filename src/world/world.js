@@ -39,13 +39,17 @@ export class World {
    * @param {THREE.Scene} options.scene
    * @param {import('../render/materials.js').WorldMaterials} options.materials
    */
-  constructor({ seed, scene, materials, worldType, caveDensity, treeDensity, savedEdits }) {
+  constructor({
+    seed, scene, materials, worldType, caveDensity, treeDensity, structureDensity, savedEdits,
+  }) {
     this.seed = seed >>> 0;
     this.scene = scene;
     this.materials = materials;
 
     this.tables = buildBlockTables();
-    this.generator = new TerrainGenerator(this.seed, { worldType, caveDensity, treeDensity });
+    this.generator = new TerrainGenerator(this.seed, {
+      worldType, caveDensity, treeDensity, structureDensity,
+    });
     this.light = new LightPropagator(this);
 
     /** @type {Map<string, Chunk>} */

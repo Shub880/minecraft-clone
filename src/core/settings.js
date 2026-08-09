@@ -34,6 +34,23 @@ export const SETTING_DEFAULTS = {
    */
   graphics: 'fancy',
   clouds: true,
+  /**
+   * The post-processing chain: bloom, sun shafts, tone mapping, vignette.
+   * Off renders straight to the screen the way the game did before it existed.
+   */
+  postFx: true,
+  /** Bloom strength. 0 switches the pass off without disabling the chain. */
+  bloom: 0.7,
+  /** Sun shaft strength. */
+  godRays: 0.7,
+  vignette: 0.5,
+  /** Exposure applied before tone mapping. */
+  exposure: 1,
+  /** Cast shadows from the sun. */
+  shadows: true,
+  shadowQuality: 'medium',
+  /** How much drifting cloud cover dims the ground, 0..1. */
+  cloudShadows: 0.5,
   /** How far the wind pushes plants, in blocks. */
   wind: 0.06,
   volume: 0.65,
@@ -41,6 +58,10 @@ export const SETTING_DEFAULTS = {
   autosave: true,
   /** Real seconds per in-game day. 0 freezes time. */
   dayLength: 1200,
+  /** Whether animals spawn and wander at all. */
+  animals: true,
+  /** Multiplier on how many animals a world carries at once. */
+  animalDensity: 1,
   /**
    * Mobile mode: touch controls plus a layout sized for a phone.
    * 'auto' follows the device, 'on' and 'off' are the player's override —
@@ -75,11 +96,21 @@ const SETTING_RULES = {
   resolutionScale: { type: 'number', min: 0.25, max: 2 },
   graphics: { type: 'enum', values: ['fast', 'fancy'] },
   clouds: { type: 'boolean' },
+  postFx: { type: 'boolean' },
+  bloom: { type: 'number', min: 0, max: 1.5 },
+  godRays: { type: 'number', min: 0, max: 1.5 },
+  vignette: { type: 'number', min: 0, max: 1.5 },
+  exposure: { type: 'number', min: 0.5, max: 1.8 },
+  shadows: { type: 'boolean' },
+  shadowQuality: { type: 'enum', values: ['low', 'medium', 'high'] },
+  cloudShadows: { type: 'number', min: 0, max: 1 },
   wind: { type: 'number', min: 0, max: 1 },
   volume: { type: 'number', min: 0, max: 1 },
   showFps: { type: 'boolean' },
   autosave: { type: 'boolean' },
   dayLength: { type: 'number', min: 0, max: 7200 },
+  animals: { type: 'boolean' },
+  animalDensity: { type: 'number', min: 0.2, max: 2 },
   touchMode: { type: 'enum', values: ['auto', 'on', 'off'] },
   touchSensitivity: { type: 'number', min: 0.5, max: 12 },
   touchSwapSides: { type: 'boolean' },
@@ -129,6 +160,34 @@ export const SETTING_SCHEMA = [
     ],
   },
   {
+    group: 'Shaders',
+    items: [
+      {
+        key: 'shadows',
+        label: 'Sun Shadows',
+        type: 'toggle',
+        hint: 'Trees, buildings and animals cast real shadows that swing round with the sun.',
+      },
+      {
+        key: 'shadowQuality',
+        label: 'Shadow Detail',
+        type: 'choice',
+        options: [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']],
+      },
+      { key: 'cloudShadows', label: 'Cloud Shadows', type: 'range', min: 0, max: 1, step: 0.05, format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`) },
+      {
+        key: 'postFx',
+        label: 'Screen Effects',
+        type: 'toggle',
+        hint: 'Bloom, sun shafts and filmic tone mapping. The single biggest change to how the world looks.',
+      },
+      { key: 'bloom', label: 'Bloom', type: 'range', min: 0, max: 1.5, step: 0.05, format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`) },
+      { key: 'godRays', label: 'Sun Shafts', type: 'range', min: 0, max: 1.5, step: 0.05, format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`) },
+      { key: 'exposure', label: 'Exposure', type: 'range', min: 0.5, max: 1.8, step: 0.05, format: (v) => `${v.toFixed(2)}×` },
+      { key: 'vignette', label: 'Vignette', type: 'range', min: 0, max: 1.5, step: 0.05, format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`) },
+    ],
+  },
+  {
     group: 'Controls',
     items: [
       { key: 'sensitivity', label: 'Mouse Sensitivity', type: 'range', min: 0.4, max: 10, step: 0.1, format: (v) => v.toFixed(1) },
@@ -160,6 +219,13 @@ export const SETTING_SCHEMA = [
     items: [
       { key: 'dayLength', label: 'Day Length', type: 'range', min: 0, max: 3600, step: 60, format: (v) => (v === 0 ? 'Frozen' : `${Math.round(v / 60)} min`) },
       { key: 'wind', label: 'Wind', type: 'range', min: 0, max: 0.2, step: 0.01, format: (v) => (v === 0 ? 'Still' : `${Math.round(v * 500)}%`) },
+      {
+        key: 'animals',
+        label: 'Animals',
+        type: 'toggle',
+        hint: 'Pigs, cows, sheep and chickens wander the surface and can be hit.',
+      },
+      { key: 'animalDensity', label: 'Animal Density', type: 'range', min: 0.2, max: 2, step: 0.1, format: (v) => `${Math.round(v * 100)}%` },
       { key: 'autosave', label: 'Autosave', type: 'toggle' },
     ],
   },

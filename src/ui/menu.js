@@ -185,6 +185,10 @@ export class Menu {
     return el('div.panel.panel--title', {}, [
       el('div.brand', {}, [
         el('h1.brand__name', { text: 'VOXEL' }),
+        // A rocking one-liner over the corner of the logo. It is the oldest
+        // joke in this genre and it is also the fastest way to tell someone
+        // the game does not take itself too seriously.
+        el('span.brand__splash', { text: pickSplash() }),
         el('p.brand__tag', { text: 'An infinite procedural block world' }),
       ]),
       el('div.menu__actions', {}, [
@@ -303,6 +307,7 @@ export class Menu {
       gameMode: GameMode.SURVIVAL,
       caveDensity: 1,
       treeDensity: 1,
+      structureDensity: 1,
     };
 
     const nameInput = el('input.input', {
@@ -360,6 +365,11 @@ export class Menu {
         format: (v) => (v === 0 ? 'None' : `${Math.round(v * 100)}%`),
         onInput: (value) => { draft.treeDensity = value; },
       })),
+      field('Structures', slider({
+        min: 0, max: 2, step: 0.1, value: draft.structureDensity,
+        format: (v) => (v === 0 ? 'None' : `${Math.round(v * 100)}%`),
+        onInput: (value) => { draft.structureDensity = value; },
+      }), 'Villages, temples, igloos, dungeons and ruins.'),
       el('div.panel__actions', {}, [
         button('Create World', () => {
           const seedText = draft.seedText.trim() || String(Math.floor(Math.random() * 1e9));
@@ -373,6 +383,7 @@ export class Menu {
             gameMode: draft.gameMode,
             caveDensity: draft.caveDensity,
             treeDensity: draft.treeDensity,
+            structureDensity: draft.structureDensity,
             created: Date.now(),
             updated: Date.now(),
             playTime: 0,
@@ -548,6 +559,30 @@ export class Menu {
       }),
     ], { back: this.home, wide: true });
   }
+}
+
+/** Every one of these is true of this game, which is most of the joke. */
+const SPLASHES = [
+  'No image files!',
+  'Every texture painted at runtime!',
+  'Shadows that actually move!',
+  'Now with sheep!',
+  'Villages included!',
+  'Also try digging down!',
+  'Infinite in every direction!',
+  'Cows have horns!',
+  '100% seed-determined!',
+  'The clouds cast shadows!',
+  'Try /locate village',
+  'Zero dependencies, one Three.js',
+  'Press F3!',
+  'Made of blocks!',
+  'Watch out for cobwebs!',
+  'The title screen is a real world!',
+];
+
+function pickSplash() {
+  return SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
 }
 
 /** A pleasant default name, so the create screen is never blank. */

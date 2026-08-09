@@ -18,11 +18,15 @@ import { AudioEngine } from './core/audio.js';
 import { WorldStore } from './core/storage.js';
 import { buildBlockTextures } from './render/atlas.js';
 import { WorldMaterials } from './render/materials.js';
+import { PostProcessing } from './render/post.js';
+import { SunShadows } from './render/shadows.js';
 import { Sky } from './render/sky.js';
 import { World } from './world/world.js';
 import { Menu } from './ui/menu.js';
+import { LoadingScreen, BOOT_STAGES, WORLD_STAGES } from './ui/loading.js';
 import { TouchControls, isTouchDevice } from './ui/touch-controls.js';
 import { Game } from './game/game.js';
+import { MobManager } from './entity/mobs.js';
 import { WorldType } from './world/worldgen/terrain.js';
 import { hashString } from './core/rng.js';
 
@@ -35,18 +39,32 @@ const PANORAMA_RADIUS = 6;
 /** How far the title camera orbits from the spawn point. */
 const PANORAMA_ORBIT = 20;
 
+/** Settings that reconfigure the shadow map or the post-processing chain. */
+const RENDER_SETTINGS = new Set([
+  'postFx', 'bloom', 'godRays', 'vignette', 'exposure',
+  'shadows', 'shadowQuality', 'cloudShadows',
+]);
+
 const dom = {
   canvas: document.getElementById('game'),
-  boot: document.getElementById('boot'),
-  bootFill: document.getElementById('boot-fill'),
-  bootStatus: document.getElementById('boot-status'),
-  bootTitle: document.getElementById('boot-title'),
   menu: document.getElementById('menu'),
   hud: document.getElementById('hud'),
   inventory: document.getElementById('inventory'),
   chat: document.getElementById('chat'),
   touch: document.getElementById('touch'),
 };
+
+const loading = new LoadingScreen({
+  root: document.getElementById('boot'),
+  canvas: document.getElementById('boot-canvas'),
+  title: document.getElementById('boot-title'),
+  subtitle: document.getElementById('boot-subtitle'),
+  stages: document.getElementById('boot-stages'),
+  fill: document.getElementById('boot-fill'),
+  status: document.getElementById('boot-status'),
+  percent: document.getElementById('boot-percent'),
+  tip: document.getElementById('boot-tip'),
+});
 
 class App {
   constructor() {
@@ -57,6 +75,7 @@ class App {
   }
 
   async boot() {
+    loading.show('VOXEL', 'An infinite block world', BOOT_STAGES);
     this.setProgress(0.05, 'Starting renderer');
     await nextFrame();
 
@@ -81,6 +100,7 @@ class App {
       if (key === 'resolutionScale') this.engine.setRenderScale(this.settings.get('resolutionScale'));
       if (key === 'graphics') this.materials.setFancy(this.settings.get('graphics') !== 'fast');
       if (key === 'touchMode' || key === 'touchSwapSides') this.applyMobileMode();
+      if (RENDER_SETTINGS.has(key)) this.applyRenderSettings();
     });
 
     this.setProgress(0.16, 'Painting textures');
@@ -97,6 +117,12 @@ class App {
     this.sky.setCloudCoverage(this.settings.get('clouds') ? 0.5 : 1.2);
     this.engine.setRenderScale(this.settings.get('resolutionScale'));
 
+    // The shadow map and the post chain outlive any single world, so they are
+    // owned here alongside the atlas and the sky rather than by a session.
+    this.post = new PostProcessing();
+    this.shadows = new SunShadows(this.atlas.texture, this.settings.get('shadowQuality'));
+    this.applyRenderSettings();
+
     this.setProgress(0.46, 'Opening saves');
     this.store = await WorldStore.open();
 
@@ -110,12 +136,12 @@ class App {
     this.menu.onResume = () => this.game?.resume();
     this.menu.onQuit = () => this.quitToTitle();
 
-    this.setProgress(0.56, 'Building the view');
+    this.setProgress(0.56, 'Growing a world');
     await this.buildPanorama();
 
     this.bindGlobalEvents();
 
-    this.setProgress(1, 'Ready');
+    loading.finish('Ready');
     await nextFrame();
     this.hideBoot();
 
@@ -128,6 +154,57 @@ class App {
     this.input.sensitivity = this.settings.get('sensitivity') * 0.001;
     this.input.invertY = this.settings.get('invertY');
     this.input.bindings = structuredClone(this.settings.bindings);
+  }
+
+  /**
+   * Reconfigure the shadow map and the post-processing chain.
+   *
+   * Tone mapping is the coupling worth noticing: exactly one of the renderer
+   * and the composite pass may do it, so the two are set together from here
+   * and can never both be on or both be off.
+   */
+  applyRenderSettings() {
+    const settings = this.settings;
+
+    const shadowsOn = settings.get('shadows');
+    this.shadows.enabled = shadowsOn;
+    if (shadowsOn) this.shadows.setQuality(settings.get('shadowQuality'));
+    this.materials.setShadows(shadowsOn);
+    this.materials.setCloudShadow(shadowsOn ? settings.get('cloudShadows') : 0);
+
+    const postOn = settings.get('postFx');
+    this.post.enabled = postOn;
+    this.post.bloomStrength = settings.get('bloom');
+    this.post.rayStrength = settings.get('godRays');
+    this.post.vignette = settings.get('vignette');
+    this.post.exposure = settings.get('exposure');
+    this.engine.setToneMapping(!postOn);
+  }
+
+  /**
+   * Draw one frame of a world view, with whatever of the chain is switched on.
+   * Shared by the title panorama and used by the session through its own copy,
+   * so the menu background is lit exactly like the game behind it.
+   */
+  renderWorldView({ shadowPlan = null, focus = null, underwater = 0 } = {}) {
+    const renderer = this.engine.renderer;
+
+    if (this.shadows.enabled && shadowPlan && focus) {
+      this.shadows.update(this.sky.sunDirection, focus);
+      this.shadows.render(renderer, this.engine.scene, shadowPlan);
+      this.materials.applyShadowMap(this.shadows);
+    }
+
+    if (this.post.enabled) {
+      this.post.setSize(...this.engine.getDrawingBufferSize(this._bufferSize ??= new THREE.Vector2()));
+      this.post.begin(renderer);
+      this.engine.render();
+      this.post.render(renderer, this.engine.camera, this.sky, underwater);
+      return;
+    }
+
+    renderer.setRenderTarget(null);
+    this.engine.render();
   }
 
   /**
@@ -146,6 +223,12 @@ class App {
     // least affordable on a phone. It is one tap away in Settings for anyone
     // whose device can carry it.
     this.settings.set('graphics', 'fast');
+    // Shadows draw the world twice and the post chain adds six full-screen
+    // passes. Both are worth having and neither is worth ten frames a second,
+    // so a phone starts without them and can turn them on.
+    this.settings.set('shadows', false);
+    this.settings.set('postFx', false);
+    this.settings.set('animalDensity', 0.6);
   }
 
   /**
@@ -219,13 +302,12 @@ class App {
     // A lost GPU context draws nothing at all, which looks exactly like a hung
     // game. Say what happened rather than leaving a black screen.
     this.engine.onContextLost = () => {
-      this.showBoot('Paused');
-      this.setProgress(1, 'The graphics context was lost — waiting for the browser to restore it');
-      dom.bootStatus.classList.add('is-error');
+      this.showBoot('Paused', 'Graphics context lost', []);
+      loading.setError('The graphics context was lost — waiting for the browser to restore it');
     };
     this.engine.onContextRestored = () => {
-      dom.bootStatus.classList.remove('is-error');
-      this.setProgress(1, 'Restored');
+      loading.clearError();
+      loading.finish('Restored');
       this.hideBoot();
     };
 
@@ -274,7 +356,24 @@ class App {
       await nextFrame();
     }
 
-    this.panorama = { world, center, angle: Math.random() * Math.PI * 2 };
+    // A herd grazing under the title is the cheapest possible way to say that
+    // this is a world rather than a screenshot of one.
+    const mobs = new MobManager({
+      scene: this.engine.scene,
+      world,
+      atlas: this.atlas,
+      audio: null,
+    });
+    mobs.density = 0.5;
+    mobs.populate(center, 8);
+
+    this.panorama = {
+      world,
+      mobs,
+      center,
+      angle: Math.random() * Math.PI * 2,
+      shadowPlan: { chunks: world.group, casters: [mobs.mesh], hidden: [this.sky.mesh] },
+    };
     this.sky.setTime(0.28);
   }
 
@@ -298,10 +397,15 @@ class App {
     this.materials.setTime(this.engine.elapsed);
     this.materials.setUnderwater(0);
     this.panorama.world.update(camera.position, 4);
+    // Animals wander around the spawn point, not the orbiting camera, so the
+    // herd stays where the title screen is looking.
+    this.panorama.mobs.update(delta, panorama.center);
+    this.panorama.mobs.applySky(this.sky, this.settings.get('brightness'));
   }
 
   disposePanorama() {
     if (!this.panorama) return;
+    this.panorama.mobs.dispose();
     this.panorama.world.dispose();
     this.panorama = null;
   }
@@ -313,7 +417,7 @@ class App {
   async startWorld(meta) {
     this.state = 'loading';
     this.menu.close();
-    this.showBoot(meta.name);
+    this.showBoot(meta.name, `Seed ${meta.seedText}`, WORLD_STAGES);
     this.audio.resume();
 
     this.disposePanorama();
@@ -332,6 +436,8 @@ class App {
       materials: this.materials,
       sky: this.sky,
       atlas: this.atlas,
+      post: this.post,
+      shadows: this.shadows,
       dom,
     });
 
@@ -339,8 +445,7 @@ class App {
       await game.load(record, (fraction, status) => this.setProgress(fraction, status));
     } catch (error) {
       console.error(error);
-      this.setProgress(1, `Could not load the world: ${error.message}`);
-      dom.bootStatus.classList.add('is-error');
+      loading.setError(`Could not load the world: ${error.message}`);
       // The session may be half-built, so disposal is best-effort — but it has
       // to be attempted or a failed load leaks a whole world's geometry.
       try {
@@ -370,8 +475,9 @@ class App {
   async recoverToTitle() {
     this.game = null;
     this.touch.attach(null);
-    this.setProgress(0.5, 'Returning to the title');
-    dom.bootStatus.classList.remove('is-error');
+    loading.clearError();
+    this.showBoot('VOXEL', 'An infinite block world', ['Growing a world']);
+    this.setProgress(0.5, 'Growing a world');
     await this.buildPanorama();
     this.state = 'title';
     this.hideBoot();
@@ -380,7 +486,9 @@ class App {
 
   async quitToTitle() {
     if (!this.game) return;
-    this.showBoot('Saving');
+    this.showBoot(this.game.meta?.name ?? 'Saving', 'Saving and returning to the title', [
+      'Saving your world', 'Growing a world',
+    ]);
     this.setProgress(0.5, 'Saving your world');
 
     try {
@@ -394,7 +502,7 @@ class App {
     this.touch.attach(null);
     this.input.releaseLock();
 
-    this.setProgress(0.75, 'Returning to the title');
+    this.setProgress(0.75, 'Growing a world');
     await this.buildPanorama();
 
     this.state = 'title';
@@ -418,7 +526,10 @@ class App {
       this.game.render();
     } else if (this.state === 'title') {
       this.updatePanorama(delta);
-      this.engine.render();
+      this.renderWorldView({
+        shadowPlan: this.panorama?.shadowPlan,
+        focus: this.panorama?.center,
+      });
     }
 
     this.updateTouchBlocking();
@@ -430,21 +541,16 @@ class App {
   // Loading screen
   // -------------------------------------------------------------------------
 
-  showBoot(title) {
-    dom.bootTitle.textContent = title ?? 'VOXEL';
-    dom.bootStatus.classList.remove('is-error');
-    dom.boot.classList.remove('hidden', 'is-leaving');
-    this.setProgress(0.02, 'Loading');
+  showBoot(title, subtitle, stages = WORLD_STAGES) {
+    loading.show(title ?? 'VOXEL', subtitle, stages);
   }
 
   hideBoot() {
-    dom.boot.classList.add('is-leaving');
-    setTimeout(() => dom.boot.classList.add('hidden'), 550);
+    loading.hide();
   }
 
   setProgress(fraction, status) {
-    dom.bootFill.style.width = `${Math.round(Math.min(1, Math.max(0, fraction)) * 100)}%`;
-    if (status) dom.bootStatus.textContent = status;
+    loading.setProgress(fraction, status);
   }
 }
 
@@ -472,6 +578,5 @@ window.voxel = app;
 
 app.boot().catch((error) => {
   console.error(error);
-  dom.bootStatus.textContent = `Failed to start: ${error.message}`;
-  dom.bootStatus.classList.add('is-error');
+  loading.setError(`Failed to start: ${error.message}`);
 });

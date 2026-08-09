@@ -13,6 +13,7 @@
 
 import { Noise, spline, smoothstep, clamp, lerp } from './noise.js';
 import { selectBiome, BiomeId, TreeType, buildBiomeTables, getBiome } from './biomes.js';
+import { placeStructures } from './structures.js';
 import { CHUNK_SIZE, WORLD_HEIGHT, SEA_LEVEL, PADDED_SIZE, TINT_STRIDE } from '../constants.js';
 import { rngAt2, hash2 } from '../../core/rng.js';
 import * as B from '../blocks.js';
@@ -55,6 +56,8 @@ export class TerrainGenerator {
     this.worldType = options.worldType ?? WorldType.CONTINENTS;
     this.caveDensity = options.caveDensity ?? 1;
     this.treeDensity = options.treeDensity ?? 1;
+    /** Multiplier on every structure's spawn chance. 0 switches them off. */
+    this.structureDensity = options.structureDensity ?? 1;
 
     // Each field gets its own permutation table so they are uncorrelated.
     this.continent = new Noise(seed ^ 0x1a2b3c4d);
@@ -192,6 +195,11 @@ export class TerrainGenerator {
     this.placeOres(chunk);
     this.placeTrees(chunk, originX, originZ);
     this.placePlants(chunk, originX, originZ);
+    // Last, so a building clears the forest it landed in rather than growing
+    // through it. Superflat is left alone: there is no terrain to sit on.
+    if (this.worldType !== WorldType.SUPERFLAT) {
+      placeStructures(this, chunk, this.makePlacer(chunk, originX, originZ));
+    }
   }
 
   fillTerrain(chunk, originX, originZ) {
