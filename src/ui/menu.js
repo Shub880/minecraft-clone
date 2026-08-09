@@ -523,16 +523,17 @@ export class Menu {
   buildTouchHelp() {
     const rows = [
       ['Move', 'Drag the stick on the left. Push it all the way to sprint'],
-      ['Look', 'Drag anywhere the stick and the buttons are not'],
+      ['Turn', 'Push the stick sideways — you turn to face the way you are going'],
+      ['Look', 'Drag anywhere the stick and the buttons are not. While a finger '
+        + 'is down the stick sidesteps instead of turning'],
       ['Mine', 'Press and hold on the block you are aiming at'],
       ['Place', 'Tap once — aim with the crosshair first'],
       ['Jump', 'The big button on the right'],
       ['Sneak', 'Hold the down button — you will not walk off an edge'],
       ['Fly', 'Creative only: the wing button toggles it, then jump and sneak for up and down'],
       ['Hotbar', 'Tap a slot at the bottom of the screen'],
-      ['Inventory', 'The bag button, top right'],
-      ['Commands', 'The speech bubble opens chat; type / for commands'],
-      ['Fullscreen', 'The last button, top right — worth doing on a phone'],
+      ['More', 'The dotted button in the corner opens inventory, chat, view, '
+        + 'fullscreen and the menu'],
     ];
 
     return this.panel('How to Play', 'Build anything. The world goes on forever in every direction.', [
@@ -541,7 +542,9 @@ export class Menu {
         el('dd', { text: description }),
       ])),
       el('p.panel__note', {
-        text: 'Mobile mode can be switched off under Settings if you would rather use a keyboard.',
+        text: 'Settings → Mobile has the look speed, a left-handed layout, and a switch for '
+          + 'turning with the stick. Mobile mode itself can be switched off if you would '
+          + 'rather use a keyboard.',
       }),
     ], { back: this.home, wide: true });
   }

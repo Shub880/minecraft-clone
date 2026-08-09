@@ -154,8 +154,8 @@ export class Game {
   /** The starting hint, phrased for whichever controls are actually in use. */
   controlHint() {
     if (document.documentElement.classList.contains('is-mobile')) {
-      return '<b>Left stick</b> move &nbsp;·&nbsp; <b>Drag</b> look &nbsp;·&nbsp; '
-        + '<b>Hold</b> mine &nbsp;·&nbsp; <b>Tap</b> place &nbsp;·&nbsp; <b>Bag</b> inventory';
+      return '<b>Stick</b> move and turn &nbsp;·&nbsp; <b>Drag</b> look &nbsp;·&nbsp; '
+        + '<b>Hold</b> mine &nbsp;·&nbsp; <b>Tap</b> place &nbsp;·&nbsp; <b>⋯</b> more';
     }
     return 'Click to play &nbsp;·&nbsp; <b>WASD</b> move &nbsp;·&nbsp; <b>Space</b> jump &nbsp;·&nbsp; '
       + '<b>LMB</b> mine &nbsp;·&nbsp; <b>RMB</b> place &nbsp;·&nbsp; <b>E</b> inventory &nbsp;·&nbsp; <b>F3</b> debug';

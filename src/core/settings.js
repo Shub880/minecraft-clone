@@ -46,6 +46,8 @@ export const SETTING_DEFAULTS = {
   touchSensitivity: 3,
   /** Left-handed players get the stick and the buttons the other way round. */
   touchSwapSides: false,
+  /** Push the stick sideways and the view follows, instead of sidestepping. */
+  turnWithMovement: true,
 };
 
 /**
@@ -74,6 +76,7 @@ const SETTING_RULES = {
   touchMode: { type: 'enum', values: ['auto', 'on', 'off'] },
   touchSensitivity: { type: 'number', min: 0.5, max: 12 },
   touchSwapSides: { type: 'boolean' },
+  turnWithMovement: { type: 'boolean' },
 };
 
 /**
@@ -129,6 +132,12 @@ export const SETTING_SCHEMA = [
         hint: 'Touch controls and a phone-sized interface. Auto turns them on for touchscreens.',
       },
       { key: 'touchSensitivity', label: 'Touch Look Speed', type: 'range', min: 0.5, max: 8, step: 0.1, format: (v) => v.toFixed(1) },
+      {
+        key: 'turnWithMovement',
+        label: 'Turn With Movement',
+        type: 'toggle',
+        hint: 'Steer with the stick: push it sideways and you turn to face that way instead of sidestepping.',
+      },
       { key: 'touchSwapSides', label: 'Left-handed Layout', type: 'toggle' },
     ],
   },

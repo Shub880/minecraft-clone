@@ -51,6 +51,7 @@ held.
 | Action | Control |
 | --- | --- |
 | Move | the stick, bottom left — push it fully to sprint |
+| Turn | push the stick sideways |
 | Look | drag anywhere the stick and buttons are not |
 | Mine | press and hold on the block you are aiming at |
 | Place | tap once |
@@ -58,10 +59,16 @@ held.
 | Sneak / fly down | the button above it |
 | Fly (creative) | the wing button toggles it |
 | Hotbar | tap a slot |
-| Inventory, chat, view, fullscreen, menu | the buttons along the top |
+| Inventory, chat, view, fullscreen, menu | the `⋯` button in the corner |
 
-**Settings → Mobile** also has a look-speed slider and a left-handed layout that
-mirrors the stick and the buttons.
+Turning is what makes a stick feel like a mouse. Pushed sideways it steers
+rather than sidesteps, so you end up facing the way you are travelling instead
+of crabbing along still looking at where you started. Put a finger on the look
+surface and it reverts to sidestepping for as long as that finger is down —
+two thumbs is desktop controls, one thumb is steering.
+
+**Settings → Mobile** has a look-speed slider, a switch for that turning
+behaviour, and a left-handed layout that mirrors the stick and the buttons.
 
 **Survival** costs you blocks to build with, and fall, lava, drowning and void
 damage are live. **Creative** gives you every block, flight and no damage.

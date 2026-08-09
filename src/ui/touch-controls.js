@@ -114,13 +114,24 @@ export class TouchControls {
       this.jumpButton,
     ]);
 
-    this.menuButtons = el('div.touch__menu', {}, [
-      this.actionButton('pause', 'Menu', ICONS.pause, { press: () => this.onPause?.() }),
-      this.actionButton('inventory', 'Inventory', ICONS.bag, { press: () => this.openOverlay('inventory') }),
-      this.actionButton('chat', 'Chat', ICONS.chat, { press: () => this.openOverlay('chat') }),
-      this.actionButton('perspective', 'View', ICONS.eye, { press: () => this.input.tap('perspective') }),
-      this.actionButton('fullscreen', 'Fullscreen', ICONS.expand, { press: () => this.toggleFullscreen() }),
+    /*
+     * A row of five buttons across the top is a row of five buttons you are
+     * looking through for the whole session. Only the toggle stays out; the
+     * rest live in a tray that opens under it, acts, and folds away again.
+     */
+    this.tray = el('div.touch__tray', {}, [
+      this.trayButton('inventory', 'Inventory', ICONS.bag, () => this.openOverlay('inventory')),
+      this.trayButton('chat', 'Chat', ICONS.chat, () => this.openOverlay('chat')),
+      this.trayButton('perspective', 'View', ICONS.eye, () => this.input.tap('perspective')),
+      this.trayButton('fullscreen', 'Fullscreen', ICONS.expand, () => this.toggleFullscreen()),
+      this.trayButton('pause', 'Menu', ICONS.pause, () => this.onPause?.()),
     ]);
+    this.trayToggle = this.actionButton('more', 'More controls', ICONS.more, {
+      press: () => this.toggleTray(),
+    });
+    this.menuButtons = el('div.touch__menu', {}, [this.tray, this.trayToggle]);
+    /** Seconds left before an untouched tray folds itself away. */
+    this.trayTimer = 0;
 
     this.root.append(this.surface, this.stickZone, this.actions, this.menuButtons);
   }
@@ -166,6 +177,36 @@ export class TouchControls {
     return node;
   }
 
+  /** A tray entry: does its job, then folds the tray away. */
+  trayButton(name, label, icon, press) {
+    return this.actionButton(name, label, icon, {
+      press: () => {
+        press();
+        this.closeTray();
+      },
+    });
+  }
+
+  toggleTray() {
+    if (this.trayOpen) this.closeTray();
+    else this.openTray();
+  }
+
+  openTray() {
+    this.trayOpen = true;
+    this.menuButtons.classList.add('is-open');
+    // Long enough to read the icons and choose, short enough that a tray
+    // opened by accident does not stay in the way.
+    this.trayTimer = 6;
+  }
+
+  closeTray() {
+    if (!this.trayOpen) return;
+    this.trayOpen = false;
+    this.menuButtons.classList.remove('is-open');
+    this.trayTimer = 0;
+  }
+
   // -------------------------------------------------------------------------
   // Look, mine and place
   // -------------------------------------------------------------------------
@@ -188,6 +229,7 @@ export class TouchControls {
         stillFor: 0,
         mining: false,
       };
+      this.input.lookDragging = true;
     });
 
     node.addEventListener('pointermove', (event) => {
@@ -215,6 +257,7 @@ export class TouchControls {
       const look = this.look;
       if (!look || event.pointerId !== look.id) return;
       this.look = null;
+      this.input.lookDragging = false;
 
       if (look.mining) {
         this.input.setVirtualButton(0, false);
@@ -387,7 +430,9 @@ export class TouchControls {
     this.stick = null;
     this.heldButtons.clear();
     this.pulses.clear();
+    this.input.lookDragging = false;
     this.input.clearVirtual();
+    this.closeTray();
     this.stickBase.classList.remove('is-active');
     this.stickBase.style.left = '';
     this.stickBase.style.top = '';
@@ -436,6 +481,11 @@ export class TouchControls {
       }
     }
 
+    if (this.trayOpen) {
+      this.trayTimer -= delta;
+      if (this.trayTimer <= 0) this.closeTray();
+    }
+
     this.refreshAvailability();
   }
 
@@ -456,6 +506,7 @@ function clamp(value, min, max) {
 
 /** Inline so the controls never wait on a network request to become usable. */
 const ICONS = {
+  more: svg('<circle cx="5.5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="18.5" cy="12" r="1.9"/>'),
   jump: svg('<path d="M12 4l7 8h-4v8h-6v-8H5z"/>'),
   sneak: svg('<path d="M12 20l-7-8h4V4h6v8h4z"/>'),
   fly: svg('<path d="M3 13c4-6 14-6 18 0-4-2-6-1-9 2-3-3-5-4-9-2z"/><circle cx="12" cy="7" r="2.4"/>'),
