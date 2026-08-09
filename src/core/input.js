@@ -51,6 +51,8 @@ export class Input {
     this.moveAxis = { x: 0, y: 0 };
     /** True while the on-screen controls are driving the camera. */
     this.touchLook = false;
+    /** True only while a finger is actually dragging the look surface. */
+    this.lookDragging = false;
     /**
      * Look delta already converted to radians, for sources that carry their own
      * sensitivity. A finger drag and a mouse move want different scaling, and

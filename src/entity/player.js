@@ -59,6 +59,17 @@ const MAX_BREATH = 15;
 
 const HALF_PI = Math.PI / 2 - 1e-4;
 
+/**
+ * Radians per second the view turns toward the stick at full deflection.
+ *
+ * About 100 degrees a second: fast enough that rounding a corner does not feel
+ * like steering a ship, slow enough to read as the player turning rather than
+ * the camera being snatched away.
+ */
+const MOVEMENT_TURN_RATE = 1.75;
+/** Sideways push below which the stick counts as straight ahead. */
+const TURN_DEADZONE = 0.12;
+
 export const GameMode = {
   SURVIVAL: 'survival',
   CREATIVE: 'creative',
@@ -201,7 +212,7 @@ export class Player {
       return;
     }
 
-    this.applyLook();
+    this.applyLook(delta);
     this.sampleFluids();
 
     const input = this.input;
@@ -222,14 +233,55 @@ export class Player {
     this.hurtFlash = Math.max(0, this.hurtFlash - delta * 2.6);
   }
 
-  applyLook() {
+  applyLook(delta = 0) {
     if (!this.input.lookActive) return;
     const look = this.input.takeLook();
-    this.yaw += look.yaw;
+    this.yaw += look.yaw + this.movementTurn(delta);
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.pitch, -HALF_PI, HALF_PI);
     // Keep yaw bounded so a long session cannot drift into float imprecision.
     if (this.yaw > Math.PI) this.yaw -= Math.PI * 2;
     else if (this.yaw < -Math.PI) this.yaw += Math.PI * 2;
+  }
+
+  /**
+   * True while the stick's sideways axis steers instead of sidestepping.
+   *
+   * A mouse turns you constantly, so on a desktop the way you face and the way
+   * you walk are the same thing without anyone thinking about it. A thumbstick
+   * alone never turns you: push it left and you sidestep left for as long as
+   * you hold it, still facing where you started. Steering closes that gap —
+   * push left and you turn left, push forward-left and you walk an arc into
+   * the new heading, exactly as if you had dragged the view around.
+   *
+   * It stands down in the two cases where sidestepping is the better answer:
+   *
+   *   - A finger on the look surface. Two thumbs means the player is aiming
+   *     with one and moving with the other, which is desktop controls; the
+   *     stick must not also be turning the camera underneath them.
+   *   - The stick pulled back. Walking backwards is deliberate, and spinning
+   *     the view round to face the way you are retreating fights that.
+   */
+  get stickSteers() {
+    if (!this.settings?.get('turnWithMovement')) return false;
+    if (this.input.lookDragging) return false;
+    const axis = this.input.moveAxis;
+    if (!axis || (axis.x === 0 && axis.y === 0)) return false;
+    return axis.y >= -0.25;
+  }
+
+  /** Yaw change from the stick this frame, in radians. */
+  movementTurn(delta) {
+    if (delta <= 0 || !this.stickSteers) return 0;
+
+    const sideways = this.input.moveAxis.x;
+    if (Math.abs(sideways) <= TURN_DEADZONE) return 0;
+
+    // Rescaled past the deadzone, so a stick held slightly off centre while
+    // running straight does not curve the path.
+    const magnitude = (Math.abs(sideways) - TURN_DEADZONE) / (1 - TURN_DEADZONE);
+    // The right vector is +x and increasing yaw turns left, so the sign is
+    // inverted: a push to the right has to turn the player right.
+    return -Math.sign(sideways) * magnitude * MOVEMENT_TURN_RATE * delta;
   }
 
   /** Read the blocks the body occupies to decide what it is standing in. */
@@ -300,7 +352,10 @@ export class Player {
     const axis = input.moveAxis;
     if (axis && (axis.x !== 0 || axis.y !== 0)) {
       wish.addScaledVector(this._forward, axis.y);
-      wish.addScaledVector(this._right, axis.x);
+      // While the stick is steering, its sideways axis has already been spent
+      // on the yaw. Letting it strafe as well would crab the player sideways
+      // through their own turn.
+      if (!this.stickSteers) wish.addScaledVector(this._right, axis.x);
     }
 
     if (wish.lengthSq() > 1) wish.normalize();

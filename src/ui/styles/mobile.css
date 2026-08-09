@@ -129,6 +129,9 @@
   width: 26px;
   height: 26px;
   display: block;
+  /* The icon must never be the event target — every handler is on the button,
+     and a press that lands on the glyph has to reach it. */
+  pointer-events: none;
 }
 
 .touch__btn--large {
@@ -164,24 +167,77 @@
   pointer-events: none;
 }
 
+/*
+ * One button in the corner, and a tray that opens beside it.
+ *
+ * The tray keeps its place in the layout when closed — it is only faded and
+ * made untouchable — so opening it never shifts the toggle out from under the
+ * thumb that just pressed it. With `pointer-events: none` a closed tray is
+ * invisible to touch as well as to the eye, and a drag across that corner
+ * reaches the look surface underneath.
+ */
 .touch__menu {
   position: absolute;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  right: calc(12px + env(safe-area-inset-right, 0px));
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: row;
+  align-items: center;
   gap: 8px;
   pointer-events: none;
 }
 
+.touch__tray {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(14px) scale(0.86);
+  transform-origin: right center;
+  /* Visibility flips only once the fade has finished, so the tray is still
+     painted while it is closing. */
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s linear 0.16s;
+}
+
+/*
+ * `pointer-events: none` on the tray is not enough on its own: the buttons
+ * inside set `auto`, and a child that re-enables pointer events is hit-tested
+ * whatever its parent says. Without this an invisible tray still swallows
+ * every drag that crosses the corner, and taps land on buttons nobody can see.
+ */
+.touch__menu:not(.is-open) .touch__tray,
+.touch__menu:not(.is-open) .touch__tray .touch__btn {
+  pointer-events: none;
+}
+
+.touch__menu.is-open .touch__tray {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.16s ease, transform 0.16s ease, visibility 0s;
+}
+
 .touch__menu .touch__btn {
-  width: 44px;
-  height: 44px;
+  width: 42px;
+  height: 42px;
 }
 
 .touch__menu .touch__btn svg {
-  width: 20px;
-  height: 20px;
+  width: 19px;
+  height: 19px;
+}
+
+/* Idle, the toggle is the only thing between the player and the world, so it
+   sits back until it is touched or the tray is open. */
+.touch__btn[data-control="more"] {
+  opacity: 0.5;
+  transition: opacity 0.16s ease, transform 0.1s ease, background 0.1s ease;
+}
+
+.touch__menu.is-open .touch__btn[data-control="more"],
+.touch__btn[data-control="more"].is-down {
+  opacity: 1;
 }
 
 /* Left-handed layout: the stick and the action cluster trade places. */
@@ -202,7 +258,18 @@
 
 .is-left-handed .touch__menu {
   right: auto;
-  left: calc(12px + env(safe-area-inset-left, 0px));
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  flex-direction: row-reverse;
+}
+
+.is-left-handed .touch__tray {
+  flex-direction: row-reverse;
+  transform: translateX(-14px) scale(0.86);
+  transform-origin: left center;
+}
+
+.is-left-handed .touch__menu.is-open .touch__tray {
+  transform: none;
 }
 
 /* ========================================================= mobile hud === */
@@ -280,7 +347,7 @@
 }
 
 .is-mobile .toasts {
-  top: calc(66px + env(safe-area-inset-top, 0px));
+  top: calc(60px + env(safe-area-inset-top, 0px));
   max-width: calc(100vw - 2rem);
 }
 
@@ -288,12 +355,12 @@
   font-size: 10px;
   line-height: 1.5;
   max-width: 26ch;
-  top: calc(64px + env(safe-area-inset-top, 0px));
+  top: calc(60px + env(safe-area-inset-top, 0px));
   left: calc(8px + env(safe-area-inset-left, 0px));
 }
 
 .is-mobile .fps-counter {
-  top: calc(64px + env(safe-area-inset-top, 0px));
+  top: calc(60px + env(safe-area-inset-top, 0px));
 }
 
 .is-mobile .chat {
