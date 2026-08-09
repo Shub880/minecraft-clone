@@ -158,6 +158,39 @@
   color: var(--ink-dim);
 }
 
+.choice {
+  display: inline-flex;
+  padding: 3px;
+  gap: 3px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  justify-self: end;
+}
+
+.choice__option {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  padding: 0.4rem 0.85rem;
+  cursor: pointer;
+  transition: background 0.14s ease, color 0.14s ease;
+}
+
+.choice__option:hover {
+  color: var(--ink);
+}
+
+.choice__option[aria-pressed="true"] {
+  background: var(--accent-dim);
+  color: #0b120a;
+}
+
 .toggle {
   appearance: none;
   position: relative;

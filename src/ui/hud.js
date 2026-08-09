@@ -32,6 +32,9 @@ export class Hud {
     this.lastLabel = '';
     this.labelTimer = 0;
 
+    /** Called with a slot index when the player picks one directly. */
+    this.onSelectSlot = null;
+
     this.build();
   }
 
@@ -56,6 +59,17 @@ export class Hud {
       slotNodes.push(slot);
     }
     this.hotbar = el('div.hotbar', {}, slotNodes);
+
+    // Delegated so the handler survives every hotbar refresh. On a desktop the
+    // hotbar is `pointer-events: none` and this never fires; in mobile mode it
+    // is how the player changes what they are holding.
+    this.hotbar.addEventListener('pointerdown', (event) => {
+      const slot = event.target.closest?.('.slot');
+      if (!slot) return;
+      event.preventDefault();
+      const index = Number(slot.dataset.index);
+      if (Number.isInteger(index)) this.onSelectSlot?.(index);
+    });
 
     this.itemLabel = el('div.item-label');
 

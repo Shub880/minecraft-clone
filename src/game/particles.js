@@ -131,6 +131,10 @@ export class Particles {
 
   /** Scale point size with the drawing buffer so particles look the same at any resolution. */
   setViewportHeight(pixels) {
+    // Guarded for the same reason the cameras are: a zero-height viewport is
+    // briefly reported on minimise, and a zero scale makes every particle
+    // vanish until the next real measurement.
+    if (!Number.isFinite(pixels) || pixels < 1) return;
     this.material.uniforms.uScale.value = pixels * 0.55;
   }
 

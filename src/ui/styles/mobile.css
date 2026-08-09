@@ -1,0 +1,532 @@
+/*
+ * Mobile mode: on-screen controls and a layout sized for a phone.
+ *
+ * Everything here is gated behind `.is-mobile` on the root element rather than
+ * a media query, because the switch is a *setting* — a tablet or a touchscreen
+ * laptop is the same size as a desktop but wants the same controls as a phone,
+ * and a phone plugged into a keyboard wants the opposite. The device only
+ * supplies the default.
+ *
+ * Layering: the touch overlay sits above the HUD's background layers but below
+ * chat, the inventory and the menus, so an open panel always wins. The hotbar
+ * is the exception — it is lifted above the overlay so slots stay tappable.
+ */
+
+/* ====================================================== touch overlay === */
+
+.touch {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* While a menu, the inventory or chat owns the screen the controls stay
+   visible but inert, so nothing is left held down behind an overlay. */
+.touch.is-blocked {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.touch.is-blocked * {
+  pointer-events: none !important;
+}
+
+/*
+ * The look surface covers the whole screen and sits underneath every control,
+ * so a drag that starts on empty sky turns the camera while one that starts on
+ * a button presses the button. It runs to the bottom edge on purpose: the
+ * hotbar is lifted above this layer (see the HUD section) and takes its own
+ * taps, so there is no need to carve a dead strip out of the play area.
+ */
+.touch__surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+/* ---------------------------------------------------------- thumbstick --- */
+
+/* Reaches the bottom corner, which is exactly where a thumb rests when the
+   phone is held in two hands. Where it runs under the hotbar the hotbar wins,
+   because the HUD sits above this layer. */
+.touch__stick-zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: min(46vw, 300px);
+  height: min(52vh, 300px);
+  pointer-events: auto;
+  touch-action: none;
+  padding: env(safe-area-inset-bottom, 0) 0 0 env(safe-area-inset-left, 0);
+}
+
+/*
+ * Positioned by its centre, because the script re-centres it under whichever
+ * thumb touches down and has to write `left`/`top` in the same terms the
+ * resting position uses.
+ */
+.touch__stick {
+  position: absolute;
+  left: 112px;
+  top: calc(100% - 100px);
+  width: 132px;
+  height: 132px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(8, 11, 16, 0.28);
+  backdrop-filter: blur(3px);
+  transition: opacity 0.18s ease, border-color 0.18s ease;
+  opacity: 0.55;
+}
+
+.touch__stick.is-active {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.touch__knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.24);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+/* ------------------------------------------------------------ buttons --- */
+
+.touch__btn {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 50%;
+  background: rgba(8, 11, 16, 0.42);
+  backdrop-filter: blur(4px);
+  color: var(--ink);
+  pointer-events: auto;
+  touch-action: none;
+  transition: transform 0.1s ease, background 0.1s ease;
+}
+
+.touch__btn svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.touch__btn--large {
+  width: 78px;
+  height: 78px;
+}
+
+.touch__btn--large svg {
+  width: 34px;
+  height: 34px;
+}
+
+.touch__btn.is-down {
+  background: rgba(126, 200, 80, 0.42);
+  transform: scale(0.94);
+}
+
+.touch__btn.is-on {
+  background: rgba(126, 200, 80, 0.32);
+  border-color: rgba(126, 200, 80, 0.7);
+}
+
+/* Jump is last in the DOM and lowest on screen: the biggest, most-used button
+   sits where the thumb already rests. */
+.touch__actions {
+  position: absolute;
+  right: calc(14px + env(safe-area-inset-right, 0px));
+  bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.touch__menu {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.touch__menu .touch__btn {
+  width: 44px;
+  height: 44px;
+}
+
+.touch__menu .touch__btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Left-handed layout: the stick and the action cluster trade places. */
+.is-left-handed .touch__stick-zone {
+  left: auto;
+  right: 0;
+  padding: env(safe-area-inset-bottom, 0) env(safe-area-inset-right, 0) 0 0;
+}
+
+.is-left-handed .touch__stick {
+  left: calc(100% - 112px);
+}
+
+.is-left-handed .touch__actions {
+  right: auto;
+  left: calc(14px + env(safe-area-inset-left, 0px));
+}
+
+.is-left-handed .touch__menu {
+  right: auto;
+  left: calc(12px + env(safe-area-inset-left, 0px));
+}
+
+/* ========================================================= mobile hud === */
+
+.is-mobile #game {
+  /* Stops the browser from treating a game drag as a scroll or a pinch. */
+  touch-action: none;
+}
+
+/*
+ * The HUD is lifted above the touch overlay so its interactive parts — the
+ * hotbar and the death screen — receive taps. Everything else in there is
+ * still `pointer-events: none`, so drags fall through to the look surface.
+ */
+.is-mobile .hud {
+  z-index: 30;
+}
+
+.is-mobile .hotbar {
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+/*
+ * Nine slots have to fit across the narrowest phone in portrait, so the slot
+ * size is derived from the viewport rather than fixed. Without this the hotbar
+ * runs off both edges and the outer slots cannot be tapped at all.
+ */
+.is-mobile .hotbar {
+  --slot: min(46px, calc((100vw - 3.4rem) / 9 - 4px));
+  gap: 4px;
+}
+
+.is-mobile .slot {
+  width: var(--slot);
+  height: var(--slot);
+}
+
+.is-mobile .slot__icon {
+  width: calc(var(--slot) - 9px);
+  height: calc(var(--slot) - 9px);
+}
+
+.is-mobile .slot__count {
+  font-size: 0.6875rem;
+}
+
+.is-mobile .slot__key {
+  display: none;
+}
+
+.is-mobile .hud__bottom {
+  bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  gap: 0.25rem;
+}
+
+.is-mobile .pip {
+  width: 13px;
+  height: 13px;
+}
+
+/* The crosshair competes with a thumb for the middle of the screen, so it is
+   kept small and faint rather than removed — it is still what you aim with. */
+.is-mobile .crosshair {
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+}
+
+.is-mobile .hint {
+  bottom: calc(122px + env(safe-area-inset-bottom, 0px));
+  font-size: 0.75rem;
+  white-space: normal;
+  max-width: min(30rem, calc(100vw - 2rem));
+}
+
+.is-mobile .toasts {
+  top: calc(66px + env(safe-area-inset-top, 0px));
+  max-width: calc(100vw - 2rem);
+}
+
+.is-mobile .debug {
+  font-size: 10px;
+  line-height: 1.5;
+  max-width: 26ch;
+  top: calc(64px + env(safe-area-inset-top, 0px));
+  left: calc(8px + env(safe-area-inset-left, 0px));
+}
+
+.is-mobile .fps-counter {
+  top: calc(64px + env(safe-area-inset-top, 0px));
+}
+
+.is-mobile .chat {
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  width: auto;
+  z-index: 45;
+}
+
+.is-mobile .chat__log {
+  max-height: 24vh;
+}
+
+.is-mobile .chat__input {
+  font-size: 16px; /* Anything smaller makes iOS zoom the page on focus. */
+  padding: 0.6rem 0.75rem;
+}
+
+/* ================================================== mobile menus/panels === */
+
+.is-mobile .menu,
+.is-mobile .modal {
+  padding:
+    calc(0.6rem + env(safe-area-inset-top, 0px))
+    calc(0.6rem + env(safe-area-inset-right, 0px))
+    calc(0.6rem + env(safe-area-inset-bottom, 0px))
+    calc(0.6rem + env(safe-area-inset-left, 0px));
+}
+
+.is-mobile .panel,
+.is-mobile .panel--wide,
+.is-mobile .inv {
+  width: 100%;
+  max-width: 40rem;
+  /* `dvh` tracks a phone's collapsing URL bar; `vh` does not, and a panel
+     sized in `vh` ends up with its last row under the browser chrome. */
+  max-height: calc(100dvh - 1.2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 1rem;
+  border-radius: 14px;
+}
+
+.is-mobile .panel--title {
+  padding: 1.25rem 1rem;
+}
+
+/* 44px is the smallest reliable touch target; buttons and controls all clear
+   it, which is most of what makes a desktop layout usable on a phone. */
+.is-mobile .btn {
+  min-height: 46px;
+  padding: 0.7rem 1.1rem;
+  font-size: 0.95rem;
+}
+
+.is-mobile .field {
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+}
+
+.is-mobile .field__hint {
+  grid-column: 1;
+}
+
+.is-mobile .input,
+.is-mobile .select {
+  min-height: 46px;
+  font-size: 16px;
+}
+
+.is-mobile .slider {
+  gap: 0.75rem;
+}
+
+.is-mobile .slider__input {
+  height: 30px;
+}
+
+.is-mobile .slider__input::-webkit-slider-thumb {
+  width: 26px;
+  height: 26px;
+}
+
+.is-mobile .slider__input::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+}
+
+.is-mobile .toggle {
+  width: 62px;
+  height: 34px;
+}
+
+.is-mobile .toggle__knob {
+  width: 26px;
+  height: 26px;
+}
+
+.is-mobile .toggle.is-on .toggle__knob {
+  transform: translateX(28px);
+}
+
+.is-mobile .world {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+.is-mobile .world__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.is-mobile .keyrow {
+  grid-template-columns: 1fr auto;
+}
+
+.is-mobile .keybind {
+  min-height: 44px;
+}
+
+.is-mobile .inv__grid,
+.is-mobile .inv__grid--palette {
+  grid-template-columns: repeat(auto-fill, minmax(48px, 1fr));
+}
+
+.is-mobile .slot--cell,
+.is-mobile .slot--palette {
+  width: 100%;
+  aspect-ratio: 1;
+  height: auto;
+}
+
+.is-mobile .inv__search {
+  font-size: 16px;
+  min-height: 44px;
+}
+
+.is-mobile .inv__close {
+  width: 44px;
+  height: 44px;
+}
+
+.is-mobile .brand__name {
+  font-size: clamp(2rem, 11vw, 3rem);
+}
+
+/*
+ * Landscape phones have almost no vertical room, so the chrome shrinks rather
+ * than the play area. This is the orientation the game is actually meant to be
+ * held in.
+ */
+@media (orientation: landscape) and (max-height: 540px) {
+  /*
+   * A landscape phone has about 360 logical pixels of height for a panel that
+   * was laid out for a desktop window. Everything vertical gets tighter rather
+   * than the panel getting a scrollbar nobody notices.
+   */
+  .is-mobile .panel,
+  .is-mobile .panel--wide,
+  .is-mobile .inv {
+    padding: 0.7rem 0.9rem;
+  }
+
+  .is-mobile .panel__head {
+    margin-bottom: 0.6rem;
+  }
+
+  .is-mobile .panel__title {
+    font-size: 1.05rem;
+  }
+
+  .is-mobile .panel__subtitle {
+    font-size: 0.8125rem;
+    margin-top: 0.2rem;
+  }
+
+  .is-mobile .panel__foot,
+  .is-mobile .panel__actions {
+    margin-top: 0.8rem;
+  }
+
+  .is-mobile .btn {
+    min-height: 40px;
+    padding: 0.5rem 0.9rem;
+    font-size: 0.875rem;
+  }
+
+  .is-mobile .field {
+    padding: 0.35rem 0;
+  }
+
+  .is-mobile .settings__group + .settings__group {
+    margin-top: 0.8rem;
+  }
+
+  .is-mobile .menu__actions {
+    gap: 0.45rem;
+  }
+
+  .is-mobile .panel--title,
+  .is-mobile .panel--pause {
+    padding: 0.9rem 1rem;
+  }
+
+  .is-mobile .brand__name {
+    font-size: 1.6rem;
+  }
+
+  .is-mobile .brand__tag {
+    display: none;
+  }
+
+  .is-mobile .menu__footer {
+    display: none;
+  }
+
+  .touch__btn--large {
+    width: 66px;
+    height: 66px;
+  }
+
+  .touch__actions {
+    gap: 9px;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .touch__stick {
+    width: 112px;
+    height: 112px;
+    top: calc(100% - 84px);
+  }
+}

@@ -105,6 +105,38 @@ export function toggle({ value, onChange }) {
   return node;
 }
 
+/**
+ * A segmented control built from `[value, label]` pairs.
+ *
+ * Preferred over a `<select>` for short option lists because every choice is
+ * visible and one tap wide — a native picker on a phone covers the screen with
+ * a wheel to choose between three words.
+ */
+export function choice({ options, value, onChange }) {
+  const buttons = [];
+  const group = el('div.choice');
+
+  for (const [optionValue, label] of options) {
+    const node = el('button.choice__option', {
+      type: 'button',
+      text: label,
+      'aria-pressed': String(optionValue === value),
+      on: {
+        click: () => {
+          for (const other of buttons) {
+            other.setAttribute('aria-pressed', String(other === node));
+          }
+          onChange(optionValue);
+        },
+      },
+    });
+    buttons.push(node);
+    group.append(node);
+  }
+
+  return group;
+}
+
 /** A native select built from `[value, label]` pairs. */
 export function select({ options, value, onChange }) {
   return el('select.select', {

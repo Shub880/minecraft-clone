@@ -12,7 +12,7 @@
  */
 
 import {
-  el, clear, button, field, slider, toggle, select, keyLabel, timeAgo, formatDuration,
+  el, clear, button, field, slider, toggle, choice, select, keyLabel, timeAgo, formatDuration,
 } from './dom.js';
 import { SETTING_SCHEMA } from '../core/settings.js';
 import { DEFAULT_BINDINGS } from '../core/input.js';
@@ -405,17 +405,29 @@ export class Menu {
 
   buildSettingRow(item) {
     const value = this.settings.get(item.key);
-    const control = item.type === 'toggle'
-      ? toggle({ value, onChange: (next) => this.settings.set(item.key, next) })
-      : slider({
-        min: item.min,
-        max: item.max,
-        step: item.step,
+    const control = this.buildSettingControl(item, value);
+    return field(item.label, control, item.hint);
+  }
+
+  buildSettingControl(item, value) {
+    if (item.type === 'toggle') {
+      return toggle({ value, onChange: (next) => this.settings.set(item.key, next) });
+    }
+    if (item.type === 'choice') {
+      return choice({
+        options: item.options,
         value,
-        format: item.format,
-        onInput: (next) => this.settings.set(item.key, next),
+        onChange: (next) => this.settings.set(item.key, next),
       });
-    return field(item.label, control);
+    }
+    return slider({
+      min: item.min,
+      max: item.max,
+      step: item.step,
+      value,
+      format: item.format,
+      onInput: (next) => this.settings.set(item.key, next),
+    });
   }
 
   // -------------------------------------------------------------------------
@@ -479,6 +491,8 @@ export class Menu {
   // -------------------------------------------------------------------------
 
   buildHelp() {
+    if (document.documentElement.classList.contains('is-mobile')) return this.buildTouchHelp();
+
     const rows = [
       ['Move', 'W A S D, and Space to jump'],
       ['Sprint', 'Hold Ctrl while moving forward'],
@@ -501,6 +515,33 @@ export class Menu {
       el('p.panel__note', {
         text: 'Survival: mine blocks to collect them, watch your health, and do not fall too far. '
           + 'Creative: unlimited blocks and flight, with damage switched off.',
+      }),
+    ], { back: this.home, wide: true });
+  }
+
+  /** The same screen, describing the gestures instead of the keys. */
+  buildTouchHelp() {
+    const rows = [
+      ['Move', 'Drag the stick on the left. Push it all the way to sprint'],
+      ['Look', 'Drag anywhere the stick and the buttons are not'],
+      ['Mine', 'Press and hold on the block you are aiming at'],
+      ['Place', 'Tap once — aim with the crosshair first'],
+      ['Jump', 'The big button on the right'],
+      ['Sneak', 'Hold the down button — you will not walk off an edge'],
+      ['Fly', 'Creative only: the wing button toggles it, then jump and sneak for up and down'],
+      ['Hotbar', 'Tap a slot at the bottom of the screen'],
+      ['Inventory', 'The bag button, top right'],
+      ['Commands', 'The speech bubble opens chat; type / for commands'],
+      ['Fullscreen', 'The last button, top right — worth doing on a phone'],
+    ];
+
+    return this.panel('How to Play', 'Build anything. The world goes on forever in every direction.', [
+      el('dl.helplist', {}, rows.flatMap(([term, description]) => [
+        el('dt', { text: term }),
+        el('dd', { text: description }),
+      ])),
+      el('p.panel__note', {
+        text: 'Mobile mode can be switched off under Settings if you would rather use a keyboard.',
       }),
     ], { back: this.home, wide: true });
   }
