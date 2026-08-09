@@ -122,7 +122,12 @@ export class ViewModel {
   }
 
   resize(width, height) {
-    const aspect = width / Math.max(1, height);
+    // A zero-sized viewport is reported during window minimise and some
+    // fullscreen transitions. Keeping the last good aspect ratio is what stops
+    // a degenerate projection matrix from blanking the held item.
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+    if (width < 1 || height < 1) return;
+    const aspect = width / height;
     if (aspect === this.camera.aspect) return;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();

@@ -49,8 +49,55 @@ export class Engine {
     this._fpsAccumulator = 0;
     this._fpsFrames = 0;
 
+    /**
+     * Last viewport the camera and drawing buffer were configured for. Kept so
+     * a resize that reports a zero-sized viewport can be ignored outright
+     * rather than dividing by it.
+     */
+    this.viewportWidth = 0;
+    this.viewportHeight = 0;
+
     this.resize();
+
+    // Two sources, because neither alone is reliable. `resize` misses layout
+    // changes that do not change the window (a phone's URL bar collapsing),
+    // and the observer does not fire for a device-pixel-ratio change.
     window.addEventListener('resize', () => this.resize());
+    if (typeof ResizeObserver !== 'undefined') {
+      this.observer = new ResizeObserver((entries) => {
+        const box = entries[0]?.contentRect;
+        if (box) this.resize(box.width, box.height);
+        else this.resize();
+      });
+      this.observer.observe(canvas);
+    }
+
+    this.bindContextEvents();
+  }
+
+  /**
+   * A lost GPU context makes every draw a silent no-op, which on screen is
+   * indistinguishable from a broken game. Say so instead, and pick the world
+   * back up if the browser hands the context back.
+   */
+  bindContextEvents() {
+    this.contextLost = false;
+    /** Set by the shell so it can rebuild what the GPU dropped. */
+    this.onContextLost = null;
+    this.onContextRestored = null;
+
+    this.canvas.addEventListener('webglcontextlost', (event) => {
+      // Without this the browser never attempts a restore.
+      event.preventDefault();
+      this.contextLost = true;
+      this.onContextLost?.();
+    });
+
+    this.canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.resize();
+      this.onContextRestored?.();
+    });
   }
 
   setPixelRatio(scale) {
@@ -64,24 +111,91 @@ export class Engine {
   }
 
   setFov(degrees) {
-    this.camera.fov = degrees;
+    // A non-finite field of view poisons the projection matrix, and every
+    // later frame culls to nothing — a black screen with a working HUD.
+    if (!Number.isFinite(degrees)) return;
+    this.camera.fov = Math.min(179, Math.max(1, degrees));
     this.camera.updateProjectionMatrix();
   }
 
   setRenderDistance(chunks) {
+    const radius = Number.isFinite(chunks) ? chunks : 8;
     // Far plane sits just beyond the loaded radius; fog hides the boundary.
-    this.camera.far = Math.max(200, chunks * 16 * 1.6);
+    this.camera.far = Math.max(200, radius * 16 * 1.6);
     this.camera.updateProjectionMatrix();
   }
 
-  resize() {
-    const width = this.canvas.clientWidth || window.innerWidth;
-    const height = this.canvas.clientHeight || window.innerHeight;
-    const ratio = Math.min(window.devicePixelRatio || 1, this.maxPixelRatio) * this.renderScale;
-    this.renderer.setPixelRatio(ratio);
+  /**
+   * Match the drawing buffer and camera to the viewport.
+   *
+   * A minimised window, a hidden tab and some fullscreen transitions all
+   * report a zero-sized viewport, and `width / 0` is what turns the camera's
+   * projection matrix into NaN. Once that happens every subsequent frame
+   * frustum-culls the entire scene — including the sky dome — and the world
+   * goes black for good, because nothing recomputes the matrix afterwards.
+   * So a measurement that cannot produce a usable aspect ratio is discarded
+   * and the last good one is kept until a real one arrives.
+   */
+  resize(measuredWidth, measuredHeight) {
+    const width = Math.floor(pickSize(measuredWidth, this.canvas.clientWidth, window.innerWidth));
+    const height = Math.floor(pickSize(measuredHeight, this.canvas.clientHeight, window.innerHeight));
+    if (width < 1 || height < 1) return;
+    if (width === this.viewportWidth && height === this.viewportHeight
+        && this.appliedRatio === this.pixelRatio) {
+      return;
+    }
+
+    this.viewportWidth = width;
+    this.viewportHeight = height;
+    this.appliedRatio = this.pixelRatio;
+
+    this.renderer.setPixelRatio(this.pixelRatio);
     this.renderer.setSize(width, height, false);
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
+  }
+
+  get pixelRatio() {
+    const device = Number.isFinite(window.devicePixelRatio) && window.devicePixelRatio > 0
+      ? window.devicePixelRatio
+      : 1;
+    return Math.min(device, this.maxPixelRatio) * this.renderScale;
+  }
+
+  /**
+   * Last line of defence for the camera.
+   *
+   * Anything that leaves a non-finite number in the camera's transform or
+   * projection renders an empty frame forever after, and the player has no way
+   * to tell that from a crash. Checking six numbers once a frame is cheap
+   * insurance, and repairing in place means a glitch costs a frame rather than
+   * the session.
+   */
+  ensureViewIsFinite() {
+    const camera = this.camera;
+    const finite = Number.isFinite(camera.aspect) && camera.aspect > 0
+      && Number.isFinite(camera.fov) && camera.fov > 0
+      && Number.isFinite(camera.near) && Number.isFinite(camera.far)
+      && Number.isFinite(camera.position.x)
+      && Number.isFinite(camera.position.y)
+      && Number.isFinite(camera.position.z)
+      && Number.isFinite(camera.rotation.x)
+      && Number.isFinite(camera.rotation.y)
+      && Number.isFinite(camera.rotation.z);
+    if (finite) return true;
+
+    const width = this.viewportWidth || this.canvas.clientWidth || window.innerWidth || 1;
+    const height = this.viewportHeight || this.canvas.clientHeight || window.innerHeight || 1;
+    camera.aspect = Math.max(0.05, width / Math.max(1, height));
+    if (!Number.isFinite(camera.fov) || camera.fov <= 0) camera.fov = 75;
+    if (!Number.isFinite(camera.near) || camera.near <= 0) camera.near = 0.08;
+    if (!Number.isFinite(camera.far) || camera.far <= camera.near) camera.far = 1400;
+    if (!camera.position.toArray().every(Number.isFinite)) camera.position.set(0, 80, 0);
+    if (!Number.isFinite(camera.rotation.x)) camera.rotation.x = 0;
+    if (!Number.isFinite(camera.rotation.y)) camera.rotation.y = 0;
+    if (!Number.isFinite(camera.rotation.z)) camera.rotation.z = 0;
+    camera.updateProjectionMatrix();
+    return false;
   }
 
   /** Seconds since the last frame, clamped so a stall does not teleport the player. */
@@ -121,6 +235,8 @@ export class Engine {
    * reading them mid-frame would report a partial total.
    */
   render() {
+    if (this.contextLost) return;
+    this.ensureViewIsFinite();
     this.renderer.info.reset();
     // A buffer clear is subject to the current write masks, and the automatic
     // clear inside `render` does not reset them. The last material drawn last
@@ -141,6 +257,15 @@ export class Engine {
   }
 
   dispose() {
+    this.observer?.disconnect();
     this.renderer.dispose();
   }
+}
+
+/** First usable size from a measurement and its fallbacks. */
+function pickSize(...candidates) {
+  for (const value of candidates) {
+    if (Number.isFinite(value) && value >= 1) return value;
+  }
+  return 0;
 }

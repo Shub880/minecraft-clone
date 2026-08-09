@@ -146,13 +146,19 @@ export class Game {
 
     // Shown here rather than during setup so its timer starts when the player
     // can actually read it, not while the loading screen is still up.
-    this.hud.showHint(
-      'Click to play &nbsp;·&nbsp; <b>WASD</b> move &nbsp;·&nbsp; <b>Space</b> jump &nbsp;·&nbsp; '
-      + '<b>LMB</b> mine &nbsp;·&nbsp; <b>RMB</b> place &nbsp;·&nbsp; <b>E</b> inventory &nbsp;·&nbsp; <b>F3</b> debug',
-      12,
-    );
+    this.hud.showHint(this.controlHint(), 12);
 
     onProgress(1, 'Ready');
+  }
+
+  /** The starting hint, phrased for whichever controls are actually in use. */
+  controlHint() {
+    if (document.documentElement.classList.contains('is-mobile')) {
+      return '<b>Left stick</b> move &nbsp;·&nbsp; <b>Drag</b> look &nbsp;·&nbsp; '
+        + '<b>Hold</b> mine &nbsp;·&nbsp; <b>Tap</b> place &nbsp;·&nbsp; <b>Bag</b> inventory';
+    }
+    return 'Click to play &nbsp;·&nbsp; <b>WASD</b> move &nbsp;·&nbsp; <b>Space</b> jump &nbsp;·&nbsp; '
+      + '<b>LMB</b> mine &nbsp;·&nbsp; <b>RMB</b> place &nbsp;·&nbsp; <b>E</b> inventory &nbsp;·&nbsp; <b>F3</b> debug';
   }
 
   buildSystems() {
@@ -176,6 +182,13 @@ export class Game {
     });
 
     this.hud = new Hud({ root: this.dom.hud, inventory: this.inventory });
+    // Only reachable in mobile mode, where the hotbar takes taps; the number
+    // keys and the scroll wheel go through `handleActions` as before.
+    this.hud.onSelectSlot = (index) => {
+      if (this.inventory.selected === index) return;
+      this.inventory.select(index);
+      this.audio.ui('select');
+    };
     this.inventoryUI = new InventoryUI({
       root: this.dom.inventory,
       inventory: this.inventory,
@@ -343,6 +356,7 @@ export class Game {
     this.playTime += delta;
 
     this.player.update(delta);
+    this.guardPlayerState();
     this.interaction.update(delta);
 
     // Streaming budget shrinks when frames are already long, so chunk loading
@@ -378,6 +392,26 @@ export class Game {
     this.chat.update();
 
     this.updateAutosave(delta);
+  }
+
+  /**
+   * Catch a player state that can no longer be rendered.
+   *
+   * The camera is driven from the player every frame, and a non-finite value
+   * there propagates straight into the projection matrix — after which the
+   * whole scene, sky included, culls away and the screen stays black however
+   * long you wait. Repairing it costs one frame; not repairing it costs the
+   * session, so the check runs every frame and says what it did.
+   */
+  guardPlayerState() {
+    if (!this.player.sanitize()) return;
+    this.engine.camera.position.copy(this.player.getEyePosition());
+    this.recoveries = (this.recoveries ?? 0) + 1;
+    console.warn('[player] recovered from an invalid position or orientation');
+    // Only the first one is worth interrupting the player for.
+    if (this.recoveries === 1) {
+      this.hud.toast('Recovered from a rendering glitch', { tone: 'error', seconds: 3 });
+    }
   }
 
   /** While paused, keep the view alive but stop the world. */
@@ -489,6 +523,9 @@ export class Game {
   }
 
   render() {
+    // Nothing can be drawn without a GPU context, and a screenshot taken
+    // without one is a blank file rather than a picture of the world.
+    if (this.engine.contextLost) return;
     this.engine.render();
     this.viewModel.render(this.engine.renderer);
     if (this.pendingScreenshot) this.captureScreenshot();

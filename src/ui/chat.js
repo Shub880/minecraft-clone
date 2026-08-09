@@ -57,6 +57,16 @@ export class Chat {
       }
     });
     this.input.addEventListener('keyup', (event) => event.stopPropagation());
+
+    // There is no Escape key on a phone, so dismissing the keyboard — by
+    // tapping the world, or with the keyboard's own close button — has to be
+    // enough to close the console. Otherwise the console stays open, the game
+    // stays blocked, and there is no way back.
+    this.input.addEventListener('blur', () => {
+      if (!document.documentElement.classList.contains('is-mobile')) return;
+      // A submit blurs the field itself; `close` has already run by then.
+      setTimeout(() => this.close(), 0);
+    });
   }
 
   get isOpen() {

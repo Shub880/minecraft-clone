@@ -21,6 +21,7 @@ import { WorldMaterials } from './render/materials.js';
 import { Sky } from './render/sky.js';
 import { World } from './world/world.js';
 import { Menu } from './ui/menu.js';
+import { TouchControls, isTouchDevice } from './ui/touch-controls.js';
 import { Game } from './game/game.js';
 import { WorldType } from './world/worldgen/terrain.js';
 import { hashString } from './core/rng.js';
@@ -44,6 +45,7 @@ const dom = {
   hud: document.getElementById('hud'),
   inventory: document.getElementById('inventory'),
   chat: document.getElementById('chat'),
+  touch: document.getElementById('touch'),
 };
 
 class App {
@@ -59,14 +61,25 @@ class App {
     await nextFrame();
 
     this.settings = new Settings();
+    this.applyFirstRunDefaults();
     this.engine = new Engine(dom.canvas);
     this.input = new Input(dom.canvas);
     this.audio = new AudioEngine(this.settings);
 
+    this.touch = new TouchControls({
+      root: dom.touch,
+      input: this.input,
+      settings: this.settings,
+      audio: this.audio,
+    });
+    this.touch.onPause = () => this.game?.pause();
+
     this.applyInputSettings();
+    this.applyMobileMode();
     this.settings.subscribe((key) => {
       if (key === 'sensitivity' || key === 'invertY' || key === 'bindings') this.applyInputSettings();
       if (key === 'resolutionScale') this.engine.setRenderScale(this.settings.get('resolutionScale'));
+      if (key === 'touchMode' || key === 'touchSwapSides') this.applyMobileMode();
     });
 
     this.setProgress(0.16, 'Painting textures');
@@ -115,6 +128,54 @@ class App {
     this.input.bindings = structuredClone(this.settings.bindings);
   }
 
+  /**
+   * Lighter defaults the first time the game runs on a phone.
+   *
+   * A phone GPU will happily accept a desktop render distance and then deliver
+   * ten frames a second, which reads as "this game is broken" rather than "this
+   * setting is too high". Only applied when there is nothing saved, so it never
+   * overrides a choice the player has actually made.
+   */
+  applyFirstRunDefaults() {
+    if (this.settings.restored || !isTouchDevice()) return;
+    this.settings.set('renderDistance', 6);
+    this.settings.set('resolutionScale', 0.75);
+  }
+
+  /**
+   * Turn mobile mode on or off.
+   *
+   * The setting decides, and 'auto' asks the device. Both the layout class and
+   * the on-screen controls are driven from here so they can never disagree —
+   * a touch overlay over a desktop-sized menu is worse than either alone.
+   */
+  applyMobileMode() {
+    const mode = this.settings.get('touchMode');
+    const active = mode === 'on' || (mode !== 'off' && isTouchDevice());
+
+    this.mobile = active;
+    document.documentElement.classList.toggle('is-mobile', active);
+    document.documentElement.classList.toggle(
+      'is-left-handed',
+      active && this.settings.get('touchSwapSides'),
+    );
+
+    this.touch.setActive(active);
+    if (active) {
+      // Pointer lock is meaningless without a pointer, and asking for it on a
+      // touch device pops a permission bar over the game.
+      this.input.releaseLock();
+    }
+    this.updateTouchBlocking();
+  }
+
+  /** Keep the on-screen controls out of the way of any open overlay. */
+  updateTouchBlocking() {
+    if (!this.mobile) return;
+    const blocked = this.state !== 'playing' || !this.game || this.game.uiBlocking;
+    this.touch.setBlocked(blocked);
+  }
+
   bindGlobalEvents() {
     // Audio contexts only start inside a gesture, so the first click anywhere
     // is what brings sound to life. The listeners detach themselves once the
@@ -129,13 +190,16 @@ class App {
     window.addEventListener('keydown', wake);
 
     dom.canvas.addEventListener('click', () => {
+      if (this.mobile) return;
       if (this.state !== 'playing' || !this.game) return;
       if (this.game.uiBlocking) return;
       if (!this.input.locked) this.input.requestLock();
     });
 
     // Losing the pointer means the player pressed Escape or alt-tabbed away.
+    // In mobile mode there is no lock to lose, so an unlock event is noise.
     this.input.onPointerUnlock = () => {
+      if (this.mobile) return;
       if (this.state !== 'playing' || !this.game) return;
       if (this.game.uiBlocking) return;
       this.game.pause();
@@ -145,6 +209,19 @@ class App {
       this.game?.viewModel.resize(dom.canvas.clientWidth, dom.canvas.clientHeight);
       this.game?.particles.setViewportHeight(dom.canvas.clientHeight);
     });
+
+    // A lost GPU context draws nothing at all, which looks exactly like a hung
+    // game. Say what happened rather than leaving a black screen.
+    this.engine.onContextLost = () => {
+      this.showBoot('Paused');
+      this.setProgress(1, 'The graphics context was lost — waiting for the browser to restore it');
+      dom.bootStatus.classList.add('is-error');
+    };
+    this.engine.onContextRestored = () => {
+      dom.bootStatus.classList.remove('is-error');
+      this.setProgress(1, 'Restored');
+      this.hideBoot();
+    };
 
     // A hidden tab is the most common way a session ends, so save there rather
     // than relying on `beforeunload`, which cannot await a database write.
@@ -278,12 +355,15 @@ class App {
     this.game = game;
     this.state = 'playing';
     this.hideBoot();
-    this.input.requestLock();
+    this.touch.attach(game);
+    this.updateTouchBlocking();
+    if (!this.mobile) this.input.requestLock();
   }
 
   /** Get back to a usable title screen after a world failed to load. */
   async recoverToTitle() {
     this.game = null;
+    this.touch.attach(null);
     this.setProgress(0.5, 'Returning to the title');
     dom.bootStatus.classList.remove('is-error');
     await this.buildPanorama();
@@ -305,6 +385,7 @@ class App {
 
     this.game.dispose();
     this.game = null;
+    this.touch.attach(null);
     this.input.releaseLock();
 
     this.setProgress(0.75, 'Returning to the title');
@@ -322,6 +403,10 @@ class App {
   frame() {
     const delta = this.engine.tick();
 
+    // Runs before the session so a tap registered this frame is already held
+    // by the time the game reads its input.
+    this.touch.update(delta);
+
     if (this.state === 'playing' && this.game) {
       this.game.update(delta);
       this.game.render();
@@ -330,6 +415,7 @@ class App {
       this.engine.render();
     }
 
+    this.updateTouchBlocking();
     this.input.endFrame();
     requestAnimationFrame(() => this.frame());
   }

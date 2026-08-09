@@ -55,17 +55,23 @@ export class InventoryUI {
       if (event.target === this.root || event.target === this.backdrop) this.close();
     });
 
+    // Pointer events rather than mouse events, so the carried stack follows a
+    // finger as well as a cursor. `pointerdown` is included because a touch has
+    // no hover: without it the icon would sit in the corner until the player
+    // dragged, which reads as a bug.
     this._trackCursor = (event) => {
       if (!this.open) return;
       this.cursor.style.transform = `translate(${event.clientX + 12}px, ${event.clientY + 12}px)`;
     };
-    document.addEventListener('mousemove', this._trackCursor);
+    document.addEventListener('pointermove', this._trackCursor);
+    document.addEventListener('pointerdown', this._trackCursor);
   }
 
   /** Detach from the document so a closed session leaves nothing behind. */
   dispose() {
     this.close();
-    document.removeEventListener('mousemove', this._trackCursor);
+    document.removeEventListener('pointermove', this._trackCursor);
+    document.removeEventListener('pointerdown', this._trackCursor);
     clear(this.root);
     this.panel = null;
     this.backdrop = null;

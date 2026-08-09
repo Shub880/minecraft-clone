@@ -40,6 +40,29 @@ Requires a browser with WebGL 2 (`sampler2DArray` is used for the block atlas).
 Commands include `/tp`, `/gamemode`, `/time`, `/give`, `/rd`, `/seed` and
 `/help`.
 
+### On a phone or tablet
+
+Mobile mode swaps the keyboard and mouse for on-screen controls and resizes the
+whole interface for a small screen. It turns itself on for touchscreens and can
+be forced either way under **Settings → Mobile → Mobile Mode**, which matters on
+tablets and touchscreen laptops where the device cannot tell you how it is being
+held.
+
+| Action | Control |
+| --- | --- |
+| Move | the stick, bottom left — push it fully to sprint |
+| Look | drag anywhere the stick and buttons are not |
+| Mine | press and hold on the block you are aiming at |
+| Place | tap once |
+| Jump / fly up | the large button, bottom right |
+| Sneak / fly down | the button above it |
+| Fly (creative) | the wing button toggles it |
+| Hotbar | tap a slot |
+| Inventory, chat, view, fullscreen, menu | the buttons along the top |
+
+**Settings → Mobile** also has a look-speed slider and a left-handed layout that
+mirrors the stick and the buttons.
+
 **Survival** costs you blocks to build with, and fall, lava, drowning and void
 damage are live. **Creative** gives you every block, flight and no damage.
 
@@ -56,7 +79,7 @@ src/
   render/      texture painting, greedy mesher, materials, sky, box models
   entity/      player physics and the third-person avatar
   game/        session orchestration, interaction, inventory, particles
-  ui/          menus, HUD, inventory screen, chat, debug overlay
+  ui/          menus, HUD, inventory screen, chat, debug overlay, touch controls
 ```
 
 A few pieces are worth knowing about before changing anything:
@@ -71,6 +94,15 @@ A few pieces are worth knowing about before changing anything:
   world dimensions without dragging in the renderer.
 - Sky, fog and world lighting all read from **`render/sky.js`**, which is the
   single source of truth for time of day.
+- **`ui/touch-controls.js`** writes into the same `core/input.js` that the
+  keyboard and mouse write into — analog movement, held *actions* and virtual
+  mouse buttons. Nothing downstream of `Input` knows which one is driving, so
+  there is no separate touch code path in the player or in interaction.
+- **`core/engine.js`** refuses to configure the camera from a zero-sized
+  viewport, and repairs a non-finite camera before every frame. Both exist
+  because a single `width / 0` there poisons the projection matrix and every
+  later frame culls the whole scene — the world goes black permanently while the
+  HUD carries on as though nothing happened.
 
 ## Not implemented
 

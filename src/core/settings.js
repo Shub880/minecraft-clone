@@ -35,7 +35,67 @@ export const SETTING_DEFAULTS = {
   autosave: true,
   /** Real seconds per in-game day. 0 freezes time. */
   dayLength: 1200,
+  /**
+   * Mobile mode: touch controls plus a layout sized for a phone.
+   * 'auto' follows the device, 'on' and 'off' are the player's override —
+   * which matters on tablets and touchscreen laptops, where the device tells
+   * you what it supports but not how it is being used.
+   */
+  touchMode: 'auto',
+  /** Radians per pixel dragged, before the 0.001 scale. */
+  touchSensitivity: 3,
+  /** Left-handed players get the stick and the buttons the other way round. */
+  touchSwapSides: false,
 };
+
+/**
+ * Validators, so a value that reaches `values` is always usable.
+ *
+ * Settings are persisted to localStorage, which anything can write to, and a
+ * single bad number here reaches the camera: a NaN sensitivity turns the view
+ * matrix to NaN on the first mouse move and the world renders black from then
+ * on. Clamping on the way in is much easier to reason about than defending at
+ * every point of use.
+ */
+const SETTING_RULES = {
+  renderDistance: { type: 'number', min: 2, max: 24, integer: true },
+  fov: { type: 'number', min: 30, max: 130 },
+  sensitivity: { type: 'number', min: 0.1, max: 20 },
+  invertY: { type: 'boolean' },
+  viewBobbing: { type: 'boolean' },
+  brightness: { type: 'number', min: 0.2, max: 3 },
+  resolutionScale: { type: 'number', min: 0.25, max: 2 },
+  clouds: { type: 'boolean' },
+  wind: { type: 'number', min: 0, max: 1 },
+  volume: { type: 'number', min: 0, max: 1 },
+  showFps: { type: 'boolean' },
+  autosave: { type: 'boolean' },
+  dayLength: { type: 'number', min: 0, max: 7200 },
+  touchMode: { type: 'enum', values: ['auto', 'on', 'off'] },
+  touchSensitivity: { type: 'number', min: 0.5, max: 12 },
+  touchSwapSides: { type: 'boolean' },
+};
+
+/**
+ * Coerce a value into something the rest of the game can use, or return
+ * `undefined` when it cannot be rescued and the default should stand.
+ */
+export function sanitizeSetting(key, value) {
+  const rule = SETTING_RULES[key];
+  if (!rule) return value;
+
+  if (rule.type === 'boolean') return Boolean(value);
+  if (rule.type === 'enum') return rule.values.includes(value) ? value : undefined;
+
+  // `Number(null)` is 0 and `Number('')` is 0, which would silently turn a
+  // missing value into the bottom of the range. Only something that was
+  // already a number, or text that reads as one, is accepted.
+  if (typeof value !== 'number' && typeof value !== 'string') return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return undefined;
+  const clamped = Math.min(rule.max, Math.max(rule.min, number));
+  return rule.integer ? Math.round(clamped) : clamped;
+}
 
 /** Ranges and labels for the settings screen, so the UI stays data-driven. */
 export const SETTING_SCHEMA = [
@@ -59,6 +119,20 @@ export const SETTING_SCHEMA = [
     ],
   },
   {
+    group: 'Mobile',
+    items: [
+      {
+        key: 'touchMode',
+        label: 'Mobile Mode',
+        type: 'choice',
+        options: [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']],
+        hint: 'Touch controls and a phone-sized interface. Auto turns them on for touchscreens.',
+      },
+      { key: 'touchSensitivity', label: 'Touch Look Speed', type: 'range', min: 0.5, max: 8, step: 0.1, format: (v) => v.toFixed(1) },
+      { key: 'touchSwapSides', label: 'Left-handed Layout', type: 'toggle' },
+    ],
+  },
+  {
     group: 'World',
     items: [
       { key: 'dayLength', label: 'Day Length', type: 'range', min: 0, max: 3600, step: 60, format: (v) => (v === 0 ? 'Frozen' : `${Math.round(v / 60)} min`) },
@@ -79,6 +153,8 @@ export class Settings {
     this.values = { ...SETTING_DEFAULTS };
     this.bindings = structuredClone(DEFAULT_BINDINGS);
     this.listeners = new Set();
+    /** False on a first run, so first-launch defaults can be tuned per device. */
+    this.restored = false;
     this.load();
   }
 
@@ -88,10 +164,12 @@ export class Settings {
 
   /** Write a value and notify subscribers. No-ops if nothing changed. */
   set(key, value) {
-    if (this.values[key] === value) return;
-    this.values[key] = value;
+    const next = sanitizeSetting(key, value);
+    if (next === undefined) return;
+    if (this.values[key] === next) return;
+    this.values[key] = next;
     this.save();
-    this.emit(key, value);
+    this.emit(key, next);
   }
 
   /** Subscribe to changes. Returns an unsubscribe function. */
@@ -138,12 +216,17 @@ export class Settings {
       return;
     }
     if (!raw) return;
+    this.restored = true;
     try {
       const parsed = JSON.parse(raw);
       // Merge key by key so a settings file written by an older build still
-      // loads, picking up defaults for anything it does not know about.
+      // loads, picking up defaults for anything it does not know about. Each
+      // value is validated on the way in — a stored NaN or a string where a
+      // number belongs would otherwise reach the renderer.
       for (const key of Object.keys(SETTING_DEFAULTS)) {
-        if (parsed.values && key in parsed.values) this.values[key] = parsed.values[key];
+        if (!parsed.values || !(key in parsed.values)) continue;
+        const value = sanitizeSetting(key, parsed.values[key]);
+        if (value !== undefined) this.values[key] = value;
       }
       if (parsed.bindings) {
         for (const action of Object.keys(DEFAULT_BINDINGS)) {

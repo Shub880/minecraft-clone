@@ -223,7 +223,7 @@ export class Player {
   }
 
   applyLook() {
-    if (!this.input.locked) return;
+    if (!this.input.lookActive) return;
     const look = this.input.takeLook();
     this.yaw += look.yaw;
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.pitch, -HALF_PI, HALF_PI);
@@ -279,7 +279,13 @@ export class Player {
     }
   }
 
-  /** Horizontal movement basis for the current yaw, flattened onto the ground. */
+  /**
+   * Horizontal movement basis for the current yaw, flattened onto the ground.
+   *
+   * Keys and the analog stick both feed this. Only vectors longer than one are
+   * normalised, so two keys still give the same speed as one while a stick
+   * pushed halfway walks at half speed instead of snapping to a run.
+   */
   buildWishDirection() {
     this._forward.set(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
     this._right.set(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
@@ -290,8 +296,20 @@ export class Player {
     if (input.isDown('back')) wish.sub(this._forward);
     if (input.isDown('right')) wish.add(this._right);
     if (input.isDown('left')) wish.sub(this._right);
-    if (wish.lengthSq() > 0) wish.normalize();
+
+    const axis = input.moveAxis;
+    if (axis && (axis.x !== 0 || axis.y !== 0)) {
+      wish.addScaledVector(this._forward, axis.y);
+      wish.addScaledVector(this._right, axis.x);
+    }
+
+    if (wish.lengthSq() > 1) wish.normalize();
     return wish;
+  }
+
+  /** True while the player is asking to go forward, by key or by stick. */
+  get forwardIntent() {
+    return this.input.isDown('forward') || (this.input.moveAxis?.y ?? 0) > 0.4;
   }
 
   updateWalk(delta) {
@@ -299,7 +317,7 @@ export class Player {
 
     // Sprinting needs forward intent, so releasing W drops out of the sprint
     // rather than leaving the player gliding sideways at sprint speed.
-    const wantsSprint = this.input.isDown('sprint') && this.input.isDown('forward') && !this.sneaking;
+    const wantsSprint = this.input.isDown('sprint') && this.forwardIntent && !this.sneaking;
     this.sprinting = wantsSprint && wish.lengthSq() > 0;
 
     const speed = this.sneaking ? SNEAK_SPEED : this.sprinting ? SPRINT_SPEED : WALK_SPEED;
@@ -781,17 +799,69 @@ export class Player {
 
   load(data) {
     if (!data) return;
-    if (data.position) this.position.fromArray(data.position);
-    if (data.spawn) this.spawnPoint.fromArray(data.spawn);
-    if (typeof data.yaw === 'number') this.yaw = data.yaw;
-    if (typeof data.pitch === 'number') this.pitch = data.pitch;
+    // Every field is validated rather than trusted. A save written from a
+    // session that went wrong can hold a NaN, and loading one straight into the
+    // position would put the camera somewhere that cannot be rendered — the
+    // world would come back black and stay that way.
+    if (isVectorArray(data.position)) this.position.fromArray(data.position);
+    if (isVectorArray(data.spawn)) this.spawnPoint.fromArray(data.spawn);
+    if (Number.isFinite(data.yaw)) this.yaw = data.yaw;
+    if (Number.isFinite(data.pitch)) this.pitch = THREE.MathUtils.clamp(data.pitch, -HALF_PI, HALF_PI);
     if (data.gameMode) this.setGameMode(data.gameMode);
     if (typeof data.flying === 'boolean') this.flying = data.flying;
-    if (typeof data.health === 'number') this.health = data.health;
-    if (typeof data.breath === 'number') this.breath = data.breath;
+    if (Number.isFinite(data.health)) this.health = THREE.MathUtils.clamp(data.health, 0, this.maxHealth);
+    if (Number.isFinite(data.breath)) this.breath = THREE.MathUtils.clamp(data.breath, 0, MAX_BREATH);
     this.velocity.set(0, 0, 0);
     this.dead = this.health <= 0;
+  }
+
+  /**
+   * Repair state that can no longer be rendered or simulated.
+   *
+   * Physics has no legitimate way to produce a non-finite position, but a
+   * corrupt save, a bad teleport or an arithmetic edge case would all end the
+   * same way: the camera follows the player, the projection turns to NaN, and
+   * every frame after that culls the entire world including the sky. Rather
+   * than trust that it can never happen, check once a frame and put the player
+   * back somewhere real. Returns true when something had to be repaired.
+   */
+  sanitize() {
+    let repaired = false;
+
+    if (!Number.isFinite(this.yaw)) { this.yaw = 0; repaired = true; }
+    if (!Number.isFinite(this.pitch)) { this.pitch = 0; repaired = true; }
+
+    if (!isFiniteVector(this.velocity)) {
+      this.velocity.set(0, 0, 0);
+      repaired = true;
+    }
+
+    if (!isFiniteVector(this.position)) {
+      const fallback = isFiniteVector(this.spawnPoint) ? this.spawnPoint : null;
+      if (fallback) this.position.copy(fallback);
+      else this.position.set(0.5, 96, 0.5);
+      this.velocity.set(0, 0, 0);
+      this.fallDistance = 0;
+      this.onGround = false;
+      repaired = true;
+    }
+
+    if (!Number.isFinite(this.fallDistance)) { this.fallDistance = 0; repaired = true; }
+    if (!Number.isFinite(this.bobPhase)) { this.bobPhase = 0; repaired = true; }
+    if (!Number.isFinite(this.bobStrength)) { this.bobStrength = 0; repaired = true; }
+    if (!Number.isFinite(this.health)) { this.health = this.maxHealth; repaired = true; }
+    if (!Number.isFinite(this.breath)) { this.breath = MAX_BREATH; repaired = true; }
+
+    return repaired;
   }
 }
 
 export const PLAYER_SIZE = { width: WIDTH, height: HEIGHT, eyeHeight: EYE_HEIGHT };
+
+function isFiniteVector(vector) {
+  return Number.isFinite(vector.x) && Number.isFinite(vector.y) && Number.isFinite(vector.z);
+}
+
+function isVectorArray(value) {
+  return Array.isArray(value) && value.length >= 3 && value.slice(0, 3).every(Number.isFinite);
+}

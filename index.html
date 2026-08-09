@@ -2,12 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="color-scheme" content="dark">
   <meta name="description" content="An infinite procedurally generated voxel sandbox that runs entirely in the browser.">
   <title>Voxel — an infinite block sandbox</title>
   <link rel="stylesheet" href="./src/ui/styles/base.css">
   <link rel="stylesheet" href="./src/ui/styles/ui.css">
+  <link rel="stylesheet" href="./src/ui/styles/mobile.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' fill='%23558b3f'/><rect y='4' width='16' height='12' fill='%237a5230'/></svg>">
   <script type="importmap">
     {
@@ -40,6 +44,9 @@
 
   <!-- Chat log and command console. -->
   <div id="chat" class="chat"></div>
+
+  <!-- On-screen controls, built by ui/touch-controls.js when mobile mode is on. -->
+  <div id="touch" class="touch hidden"></div>
 
   <noscript>
     <div class="noscript">
