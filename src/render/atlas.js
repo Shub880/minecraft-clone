@@ -170,21 +170,26 @@ const TINTED = 0;
  */
 const painters = {
   // --- Stone family -------------------------------------------------------
-  stone: (p) => p.fill(C.stone).grain(0.13, 8, 3).blobs(C.stoneDark, 3, 7, 0.28)
-    .blobs(C.stoneLight, 2, 5, 0.2).bevel(1.06, 0.93),
+  stone: (p) => p.fill(C.stone).grain(0.13, 8, 3).pixelGrain(0.09)
+    .blobs(C.stoneDark, 3, 7, 0.28).blobs(C.stoneLight, 2, 5, 0.2)
+    .clusters(C.stoneDark, 16, 0.3, 1, 2).clusters(C.stoneLight, 12, 0.24, 1, 2)
+    .speckle(C.stoneDark, 24, 0.3).bevel(1.06, 0.93),
 
-  cobblestone: (p) => p.fill(C.stone).grain(0.1, 8, 2)
-    .cobbles(C.stoneDark, 3, 0.16, 0.18).bevel(1.08, 0.9),
+  cobblestone: (p) => p.fill(C.stone).grain(0.1, 8, 2).pixelGrain(0.1)
+    .cobbles(C.stoneDark, 3, 0.16, 0.18)
+    .clusters(C.stoneLight, 10, 0.22, 1, 2).clusters(C.stoneDark, 10, 0.26, 1, 2)
+    .bevel(1.08, 0.9),
 
   mossy_cobblestone: (p) => p.fill(C.stone).grain(0.1, 8, 2)
     .cobbles(C.stoneDark, 3, 0.16, 0.18)
     .blobs(C.moss, 5, 7, 0.62).blobs(C.mossDark, 3, 4, 0.4).bevel(1.08, 0.9),
 
-  stone_bricks: (p) => p.fill(C.stone).grain(0.09, 8, 2)
-    .bricks(C.stoneDark, 4, 0.8).blobs(C.stoneDark, 2, 4, 0.16).bevel(1.06, 0.92),
+  stone_bricks: (p) => p.fill(C.stone).grain(0.09, 8, 2).pixelGrain(0.08)
+    .bricks(C.stoneDark, 4, 0.8).blobs(C.stoneDark, 2, 4, 0.16)
+    .clusters(C.stoneDark, 10, 0.22, 1, 2).bevel(1.06, 0.92),
 
-  bricks: (p) => p.fill(C.bricks).grain(0.11, 8, 2)
-    .bricks(C.mortar, 4, 0.95).bevel(1.06, 0.9),
+  bricks: (p) => p.fill(C.bricks).grain(0.11, 8, 2).pixelGrain(0.07)
+    .bricks(C.mortar, 4, 0.95).clusters([148, 74, 56], 10, 0.2, 1, 2).bevel(1.06, 0.9),
 
   bedrock: (p) => p.fill(C.deepstone).grain(0.3, 6, 3)
     .blobs([20, 20, 24], 6, 6, 0.6).blobs(C.stoneDark, 4, 5, 0.4).outline(0.8),
@@ -198,11 +203,14 @@ const painters = {
     .blobs(C.obsidianHi, 4, 5, 0.35).speckle(C.obsidianHi, 22, 0.5).bevel(1.15, 0.88),
 
   // --- Soils --------------------------------------------------------------
-  dirt: (p) => p.fill(C.dirt).grain(0.16, 8, 3)
-    .blobs(C.dirtDark, 4, 6, 0.3).blobs(C.dirtLight, 3, 4, 0.22).bevel(1.07, 0.9),
+  dirt: (p) => p.fill(C.dirt).grain(0.16, 8, 3).pixelGrain(0.13)
+    .blobs(C.dirtDark, 4, 6, 0.3).blobs(C.dirtLight, 3, 4, 0.22)
+    .clusters(C.dirtDark, 22, 0.36, 1, 2).clusters(C.dirtLight, 16, 0.3, 1, 2)
+    .speckle([70, 50, 34], 22, 0.35).bevel(1.07, 0.9),
 
-  coarse_dirt: (p) => p.fill(C.dirt).grain(0.2, 10, 3)
-    .blobs(C.dirtDark, 6, 5, 0.42).speckle(C.gravelDark, 40, 0.5).bevel(1.05, 0.9),
+  coarse_dirt: (p) => p.fill(C.dirt).grain(0.2, 10, 3).pixelGrain(0.16)
+    .blobs(C.dirtDark, 6, 5, 0.42).clusters(C.gravelDark, 20, 0.45, 1, 2)
+    .speckle(C.gravelDark, 40, 0.5).bevel(1.05, 0.9),
 
   mud: (p) => p.fill(C.mud).grain(0.14, 6, 3).blobs([52, 44, 38], 4, 6, 0.4)
     .bevel(1.08, 0.88),
@@ -210,10 +218,13 @@ const painters = {
   clay: (p) => p.fill(C.clay).grain(0.09, 8, 3).blobs([142, 148, 158], 3, 6, 0.25)
     .bevel(1.05, 0.93),
 
-  gravel: (p) => p.fill(C.gravel).grain(0.14, 10, 3)
-    .cobbles(C.gravelDark, 5, 0.24, 0.2).speckle(C.stoneLight, 26, 0.4).bevel(1.05, 0.92),
+  gravel: (p) => p.fill(C.gravel).grain(0.14, 10, 3).pixelGrain(0.14)
+    .cobbles(C.gravelDark, 5, 0.24, 0.2)
+    .clusters(C.stoneLight, 16, 0.3, 1, 2).clusters([74, 72, 70], 14, 0.35, 1, 2)
+    .speckle(C.stoneLight, 26, 0.4).bevel(1.05, 0.92),
 
-  sand: (p) => p.fill(C.sand).grain(0.08, 12, 3)
+  sand: (p) => p.fill(C.sand).grain(0.08, 12, 3).pixelGrain(0.07)
+    .clusters(C.sandDark, 14, 0.24, 1, 1).clusters([255, 250, 226], 12, 0.22, 1, 1)
     .speckle(C.sandDark, 60, 0.35).speckle([255, 250, 226], 30, 0.5).bevel(1.05, 0.94),
 
   sandstone_top: (p) => p.fill(C.sandstone).grain(0.07, 10, 3)
@@ -243,7 +254,7 @@ const painters = {
   // --- Grass --------------------------------------------------------------
   // Painted greyscale with alpha 0 so the biome tint fully drives the colour.
   grass_top: (p) => {
-    p.fill(C.grassBase, TINTED).grain(0.13, 10, 3);
+    p.fill(C.grassBase, TINTED).grain(0.13, 10, 3).pixelGrain(0.11);
     // Short vertical blade strokes give the surface direction.
     for (let i = 0; i < 46; i++) {
       const x = Math.floor(p.rand() * p.size);
@@ -254,12 +265,15 @@ const painters = {
         p.blend(x, (y + k) % p.size, dark ? C.grassDark : [246, 246, 246], 0.3);
       }
     }
-    return p.blobs(C.grassDark, 3, 6, 0.16);
+    return p.blobs(C.grassDark, 3, 6, 0.16)
+      .clusters(C.grassDark, 18, 0.26, 1, 2).clusters([248, 248, 248], 12, 0.2, 1, 1);
   },
 
   grass_side: (p) => {
     // Dirt body stays untinted (alpha 255); the fringe is tint-masked.
-    p.fill(C.dirt, NO_TINT).grain(0.15, 8, 3).blobs(C.dirtDark, 3, 5, 0.28);
+    p.fill(C.dirt, NO_TINT).grain(0.15, 8, 3).pixelGrain(0.12)
+      .blobs(C.dirtDark, 3, 5, 0.28).clusters(C.dirtDark, 16, 0.32, 1, 2)
+      .clusters(C.dirtLight, 10, 0.26, 1, 2);
     const edge = tileableFbm(p.size, 4, 2, p.rand);
     for (let x = 0; x < p.size; x++) {
       // Ragged grass line, roughly a third of the way down the block.
@@ -292,12 +306,15 @@ const painters = {
     }
     return p.bevel(1.07, 0.9);
   },
-  moss: (p) => p.fill(C.moss).grain(0.18, 10, 3)
-    .blobs(C.mossDark, 5, 5, 0.4).speckle([132, 168, 84], 34, 0.4).bevel(1.06, 0.9),
+  moss: (p) => p.fill(C.moss).grain(0.18, 10, 3).pixelGrain(0.14)
+    .blobs(C.mossDark, 5, 5, 0.4).clusters(C.mossDark, 18, 0.34, 1, 2)
+    .clusters([132, 168, 84], 14, 0.3, 1, 2)
+    .speckle([132, 168, 84], 34, 0.4).bevel(1.06, 0.9),
 
   // --- Wood ---------------------------------------------------------------
-  oak_log_side: (p) => p.fill(C.bark).grain(0.14, 4, 2)
-    .streaks(C.barkDark, 9, 0.42).streaks(C.barkLight, 4, 0.22).bevel(1.07, 0.88),
+  oak_log_side: (p) => p.fill(C.bark).grain(0.14, 4, 2).pixelGrain(0.1)
+    .streaks(C.barkDark, 9, 0.42).streaks(C.barkLight, 4, 0.22)
+    .clusters(C.barkDark, 14, 0.28, 1, 3).bevel(1.07, 0.88),
   oak_log_top: (p) => p.fill(C.woodCore).grain(0.09, 8, 2)
     .rings(C.woodCoreDark, 5, 0.45).outline(0.84),
 
@@ -330,8 +347,9 @@ const painters = {
   cherry_log_top: (p) => p.fill(C.cherryCore).grain(0.08, 8, 2)
     .rings([158, 112, 112], 5, 0.4).outline(0.86),
 
-  oak_planks: (p) => p.fill(C.planks).grain(0.1, 4, 2)
-    .streaks(C.planksDark, 6, 0.2).planks(C.planksDark, 4, 0.7).bevel(1.06, 0.9),
+  oak_planks: (p) => p.fill(C.planks).grain(0.1, 4, 2).pixelGrain(0.06)
+    .streaks(C.planksDark, 6, 0.2).planks(C.planksDark, 4, 0.7)
+    .clusters(C.planksDark, 10, 0.16, 1, 3).bevel(1.06, 0.9),
 
   bookshelf: (p) => {
     p.fill(C.planks).grain(0.08, 4, 2).streaks(C.planksDark, 4, 0.18);
@@ -430,8 +448,9 @@ const painters = {
   },
 
   // --- Ice and snow -------------------------------------------------------
-  snow: (p) => p.fill(C.snow).grain(0.05, 10, 3)
-    .blobs(C.snowShadow, 3, 6, 0.3).speckle([255, 255, 255], 30, 0.7).bevel(1.03, 0.94),
+  snow: (p) => p.fill(C.snow).grain(0.05, 10, 3).pixelGrain(0.045)
+    .blobs(C.snowShadow, 3, 6, 0.3).clusters(C.snowShadow, 12, 0.22, 1, 2)
+    .speckle([255, 255, 255], 30, 0.7).bevel(1.03, 0.94),
   ice: (p) => {
     p.fill(C.ice, 200).grain(0.08, 6, 3).blobs(C.iceLight, 4, 7, 0.4);
     // Fracture lines.
@@ -693,6 +712,110 @@ let cached = null;
  * The player skin lives here so the avatar and the held-item view model can be
  * drawn from the same array texture as the world, with no second bind.
  */
+// ---------------------------------------------------------------------------
+// Surface properties
+// ---------------------------------------------------------------------------
+
+/**
+ * How each texture behaves under light, beyond its colour.
+ *
+ *   relief     multiplier on the surface bumpiness derived from the texture
+ *   roughness  0 is a mirror, 1 is chalk; drives the size of a sun highlight
+ *   emissive   how much the texture glows on its own, 0..1
+ *
+ * These are the numbers the lighting reads, and they are what separates wet
+ * ice from dry gravel far more than the colours do. A default plus a handful
+ * of family rules covers most of the atlas; only genuinely unusual materials
+ * are listed by name.
+ */
+const SURFACE_DEFAULT = { relief: 1, roughness: 0.88, emissive: 0 };
+
+/** Matched in order against the texture name; the first hit wins. */
+const SURFACE_FAMILIES = [
+  [/_leaves$/, { relief: 1.15, roughness: 0.92 }],
+  [/_log_side$/, { relief: 1.2, roughness: 0.9 }],
+  [/_log_top$/, { relief: 0.9, roughness: 0.88 }],
+  [/^skin_/, { relief: 0.35, roughness: 0.95 }],
+  [/terracotta$/, { relief: 0.8, roughness: 0.72 }],
+  [/^sandstone/, { relief: 0.9, roughness: 0.9 }],
+];
+
+const SURFACES = {
+  // Rough stone wants deep relief: this is most of what makes cobble read as
+  // rounded stones rather than a photograph of them.
+  cobblestone: { relief: 1.6 },
+  mossy_cobblestone: { relief: 1.5 },
+  gravel: { relief: 1.7 },
+  bedrock: { relief: 1.7 },
+  stone_bricks: { relief: 1.35 },
+  bricks: { relief: 1.35, roughness: 0.8 },
+  basalt_side: { relief: 1.3 },
+  basalt_top: { relief: 1.3 },
+  coarse_dirt: { relief: 1.3 },
+  mud: { relief: 0.9, roughness: 0.5 },
+  clay: { relief: 0.7, roughness: 0.78 },
+  moss: { relief: 1.2, roughness: 0.95 },
+  podzol_top: { relief: 1.2 },
+  grass_top: { relief: 0.85, roughness: 0.94 },
+  grass_side: { relief: 1, roughness: 0.94 },
+  sand: { relief: 0.7, roughness: 0.86 },
+  snow: { relief: 0.5, roughness: 0.66 },
+
+  // Polished, wet or crystalline. Low roughness is what gives these a moving
+  // highlight as the sun crosses the sky.
+  water: { relief: 0.2, roughness: 0.04 },
+  ice: { relief: 0.35, roughness: 0.1 },
+  packed_ice: { relief: 0.5, roughness: 0.16 },
+  glass: { relief: 0.25, roughness: 0.05 },
+  obsidian: { relief: 0.7, roughness: 0.18 },
+  amethyst: { relief: 1.2, roughness: 0.16 },
+  diamond_ore: { relief: 1.1, roughness: 0.3 },
+  gold_ore: { relief: 1.1, roughness: 0.26 },
+  iron_ore: { relief: 1.1, roughness: 0.44 },
+  lapis_ore: { relief: 1.1, roughness: 0.38 },
+  coal_ore: { relief: 1.1, roughness: 0.82 },
+  redstone_ore: { relief: 1.1, roughness: 0.4, emissive: 0.22 },
+
+  // Light sources. Emissive is modulated per pixel by brightness, so a torch
+  // glows at the flame and not down the stick.
+  lava: { relief: 0.7, roughness: 0.62, emissive: 1 },
+  glowstone: { relief: 1, roughness: 0.6, emissive: 0.95 },
+  torch: { relief: 0.7, roughness: 0.75, emissive: 1 },
+
+  // Worked wood is smoother than the tree it came from.
+  oak_planks: { relief: 1.1, roughness: 0.82 },
+  bookshelf: { relief: 1.2, roughness: 0.86 },
+  crafting_table_top: { relief: 1.1, roughness: 0.82 },
+  crafting_table_side: { relief: 1.1, roughness: 0.82 },
+  chest_top: { relief: 1.1, roughness: 0.8 },
+  chest_side: { relief: 1.1, roughness: 0.8 },
+  chest_front: { relief: 1.2, roughness: 0.78 },
+  furnace_top: { relief: 1.1, roughness: 0.74 },
+  furnace_side: { relief: 1.1, roughness: 0.74 },
+  furnace_front: { relief: 1.3, roughness: 0.7 },
+
+  // Plants are lit as flat cards; relief on them reads as noise, not shape.
+  grass_blade: { relief: 0.4, roughness: 0.95 },
+  fern: { relief: 0.4, roughness: 0.95 },
+  poppy: { relief: 0.5, roughness: 0.9 },
+  dandelion: { relief: 0.5, roughness: 0.9 },
+  cornflower: { relief: 0.5, roughness: 0.9 },
+  dead_bush: { relief: 0.4, roughness: 0.96 },
+  sugar_cane: { relief: 0.5, roughness: 0.92 },
+  cactus_side: { relief: 1.1, roughness: 0.88 },
+  cactus_top: { relief: 1, roughness: 0.88 },
+  cactus_bottom: { relief: 1, roughness: 0.88 },
+  pumpkin_side: { relief: 1.2, roughness: 0.76 },
+  pumpkin_top: { relief: 1.1, roughness: 0.76 },
+  melon_side: { relief: 1.1, roughness: 0.74 },
+  melon_top: { relief: 1, roughness: 0.74 },
+};
+
+function surfaceFor(name) {
+  const family = SURFACE_FAMILIES.find(([pattern]) => pattern.test(name));
+  return { ...SURFACE_DEFAULT, ...(family ? family[1] : null), ...SURFACES[name] };
+}
+
 export const EXTRA_TEXTURES = [
   'skin_face', 'skin_head', 'skin_hair', 'skin_body', 'skin_arm', 'skin_leg',
 ];
@@ -707,6 +830,8 @@ export function buildBlockTextures() {
   const names = [...collectTextureNames(), ...EXTRA_TEXTURES];
   const layers = names.length;
   const data = new Uint8Array(TILE * TILE * 4 * layers);
+  /** Per-texel surface data: normal.xy, roughness, emissive. */
+  const surfaceData = new Uint8Array(TILE * TILE * 4 * layers);
   const tileIndexByName = new Map();
   /** Mean colour of each layer, in linear 0..1, for particles and map colours. */
   const averages = new Float32Array(layers * 3);
@@ -722,7 +847,9 @@ export function buildBlockTextures() {
       p.fill([255, 0, 220]).bricks([0, 0, 0], 4, 1);
       console.warn(`[atlas] no painter for texture "${name}"`);
     }
-    writeTileFlipped(p, data, layer * TILE * TILE * 4);
+    const offset = layer * TILE * TILE * 4;
+    writeTileFlipped(p, data, offset);
+    writeSurfaceTile(p, name, surfaceData, offset);
     tileIndexByName.set(name, layer);
     writeAverage(p, name, averages, layer);
   });
@@ -742,8 +869,110 @@ export function buildBlockTextures() {
   texture.generateMipmaps = true;
   texture.needsUpdate = true;
 
-  cached = { texture, layers, names, tileIndexByName, averages };
+  const surface = new THREE.DataArrayTexture(surfaceData, TILE, TILE, layers);
+  surface.format = THREE.RGBAFormat;
+  surface.type = THREE.UnsignedByteType;
+  // Linear here, unlike the colour atlas. Crisp texels are the point of the
+  // art; crisp *normals* would light each texel as its own flat facet, which
+  // reads as noise. Smooth relief under sharp colour is what a bumpmapped
+  // pixel-art pack looks like.
+  surface.magFilter = THREE.LinearFilter;
+  surface.minFilter = THREE.LinearMipmapLinearFilter;
+  surface.wrapS = THREE.RepeatWrapping;
+  surface.wrapT = THREE.RepeatWrapping;
+  surface.generateMipmaps = true;
+  surface.needsUpdate = true;
+
+  cached = { texture, surface, layers, names, tileIndexByName, averages };
   return cached;
+}
+
+/**
+ * Derive one tile's surface map from the colours that were just painted.
+ *
+ * The height field is the texture's own perceptual brightness. That sounds
+ * like a shortcut, and for a photograph it would be — but these textures are
+ * *drawn*, and everything that is drawn dark in them is drawn dark because it
+ * is a recess: mortar between cobbles, the groove between planks, the pits in
+ * gravel. Reading height back out of the paint therefore gets the relief right
+ * almost everywhere, and costs nothing at authoring time: every texture added
+ * later gets its normals for free.
+ *
+ * Normals come from a wrapped Sobel over that field, so they tile exactly the
+ * way the colours do — a seam here would draw a lit grid across every large
+ * surface.
+ */
+function writeSurfaceTile(painter, name, out, offset) {
+  const size = painter.size;
+  const { relief, roughness, emissive } = surfaceFor(name);
+  const cutout = CUTOUT_TEXTURES.has(name);
+  const px = painter.px;
+
+  const height = new Float32Array(size * size);
+  let min = Infinity;
+  let max = -Infinity;
+  let sum = 0;
+  let samples = 0;
+
+  for (let i = 0; i < size * size; i++) {
+    const j = i * 4;
+    // Rec. 601 luma: closer to how the eye reads brightness than a mean, which
+    // matters because these palettes are far from grey.
+    const luma = (px[j] * 0.299 + px[j + 1] * 0.587 + px[j + 2] * 0.114) / 255;
+    height[i] = luma;
+    if (cutout && px[j + 3] < 128) continue;
+    if (luma < min) min = luma;
+    if (luma > max) max = luma;
+    sum += luma;
+    samples++;
+  }
+
+  const mean = samples > 0 ? sum / samples : 0.5;
+  // A hole has no surface. Flattening it to the tile's mean keeps the cut edge
+  // from being read as a cliff and lit like one.
+  if (cutout) {
+    for (let i = 0; i < size * size; i++) {
+      if (px[i * 4 + 3] < 128) height[i] = mean;
+    }
+  }
+
+  // Normalise per tile so a dark texture gets the same relief as a bright one,
+  // rather than the amount of bump depending on the palette.
+  const range = max - min;
+  const scale = range > 0.02 ? 1 / range : 0;
+  for (let i = 0; i < size * size; i++) {
+    height[i] = scale > 0 ? (height[i] - min) * scale : 0.5;
+  }
+
+  const strength = relief * 2.2;
+  const roughByte = Math.round(Math.min(1, Math.max(0, roughness)) * 255);
+
+  for (let row = 0; row < size; row++) {
+    // Written flipped, matching the colour tile, so both agree on which way is
+    // up. The Y derivative is negated for the same reason.
+    const y = size - 1 - row;
+    for (let x = 0; x < size; x++) {
+      const left = height[y * size + ((x - 1 + size) % size)];
+      const right = height[y * size + ((x + 1) % size)];
+      const up = height[((y - 1 + size) % size) * size + x];
+      const down = height[((y + 1) % size) * size + x];
+
+      const dx = (right - left) * 0.5 * strength;
+      const dy = (down - up) * 0.5 * strength;
+      const inverse = 1 / Math.sqrt(dx * dx + dy * dy + 1);
+      const nx = -dx * inverse;
+      const ny = dy * inverse;
+
+      const j = offset + (row * size + x) * 4;
+      out[j] = Math.round((nx * 0.5 + 0.5) * 255);
+      out[j + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+      out[j + 2] = roughByte;
+      // Only the bright part of a texture glows: squaring the normalised
+      // brightness lights a torch's flame and leaves its stick alone.
+      const glow = emissive > 0 ? emissive * height[y * size + x] ** 2 : 0;
+      out[j + 3] = Math.round(Math.min(1, glow) * 255);
+    }
+  }
 }
 
 /**

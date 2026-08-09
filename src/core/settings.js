@@ -27,6 +27,12 @@ export const SETTING_DEFAULTS = {
   brightness: 1,
   /** Multiplier on the device pixel ratio; below 1 renders and upscales. */
   resolutionScale: 1,
+  /**
+   * 'fancy' turns on per-pixel surface relief, sun highlights and emissive
+   * blocks. 'fast' drops all three for the flat-shaded look, which is a real
+   * saving on a phone GPU.
+   */
+  graphics: 'fancy',
   clouds: true,
   /** How far the wind pushes plants, in blocks. */
   wind: 0.06,
@@ -67,6 +73,7 @@ const SETTING_RULES = {
   viewBobbing: { type: 'boolean' },
   brightness: { type: 'number', min: 0.2, max: 3 },
   resolutionScale: { type: 'number', min: 0.25, max: 2 },
+  graphics: { type: 'enum', values: ['fast', 'fancy'] },
   clouds: { type: 'boolean' },
   wind: { type: 'number', min: 0, max: 1 },
   volume: { type: 'number', min: 0, max: 1 },
@@ -105,6 +112,13 @@ export const SETTING_SCHEMA = [
   {
     group: 'Video',
     items: [
+      {
+        key: 'graphics',
+        label: 'Lighting',
+        type: 'choice',
+        options: [['fancy', 'Fancy'], ['fast', 'Fast']],
+        hint: 'Fancy lights every pixel: bumpy stone, sun glinting off water, glowing lava. Fast is flat shading.',
+      },
       { key: 'renderDistance', label: 'Render Distance', type: 'range', min: 3, max: 20, step: 1, format: (v) => `${v} chunks` },
       { key: 'fov', label: 'Field of View', type: 'range', min: 60, max: 110, step: 1, format: (v) => `${v}°` },
       { key: 'resolutionScale', label: 'Resolution', type: 'range', min: 0.5, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%` },

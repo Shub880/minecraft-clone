@@ -2,8 +2,8 @@
 
 An infinite, procedurally generated block sandbox that runs entirely in the
 browser. No build step, no bundler, no image or audio assets — every texture is
-painted and every sound is synthesised at runtime, so the whole game is the
-files in this repository plus one copy of Three.js.
+painted, every surface normal derived and every sound synthesised at runtime, so
+the whole game is the files in this repository plus one copy of Three.js.
 
 ## Running it
 
@@ -73,6 +73,22 @@ behaviour, and a left-handed layout that mirrors the stick and the buttons.
 **Survival** costs you blocks to build with, and fall, lava, drowning and void
 damage are live. **Creative** gives you every block, flight and no damage.
 
+### Lighting
+
+**Settings → Video → Lighting** picks between two shading models.
+
+**Fancy** lights every pixel rather than every face. Each texture carries a
+derived normal map, so cobble reads as rounded stones and planks have grooves
+that catch the sun; a roughness value per material gives ice, obsidian and ore
+a highlight that tracks the sun across the sky while dirt and moss stay matte;
+water gets its highlight from the analytic slope of the waves it is actually
+displaced by; and lava, glowstone and torches emit light of their own, only
+from the parts of the texture that are bright — a torch glows at the flame and
+not down the stick.
+
+**Fast** is the flat-shaded look with none of that. It is a real saving on a
+phone GPU, and it is what mobile mode picks on a first run.
+
 Worlds are saved to IndexedDB in your browser. Only your *edits* are stored —
 terrain is a pure function of the seed, so regenerating it is faster and far
 smaller than reading it back.
@@ -101,6 +117,16 @@ A few pieces are worth knowing about before changing anything:
   world dimensions without dragging in the renderer.
 - Sky, fog and world lighting all read from **`render/sky.js`**, which is the
   single source of truth for time of day.
+- **`render/atlas.js`** paints two array textures, not one. The second holds a
+  normal, a roughness and an emissive value per texel, and its normals are
+  derived from the colours that were just painted — everything drawn dark in a
+  hand-drawn block texture is drawn dark *because it is a recess*, so reading
+  height back out of the paint gets the relief right and every texture added
+  later gets its normals for free.
+- **`render/materials.js`** rebuilds the tangent frame per pixel from screen
+  space derivatives rather than a vertex attribute. Greedy meshing means one
+  quad can span a hundred blocks, and a tangent attribute would make the mesher
+  emit and the GPU carry data the rasteriser already has.
 - **`ui/touch-controls.js`** writes into the same `core/input.js` that the
   keyboard and mouse write into — analog movement, held *actions* and virtual
   mouse buttons. Nothing downstream of `Input` knows which one is driving, so

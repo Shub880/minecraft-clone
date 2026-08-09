@@ -90,6 +90,53 @@ export class Painter {
     return this;
   }
 
+  /**
+   * Quantised per-texel noise.
+   *
+   * `grain` builds smooth clouds from fbm, which is right for large soft
+   * variation but reads as an airbrush at close range. This is the other half:
+   * hard-edged noise on a `cell`-pixel grid, which is what gives hand-drawn
+   * block art its crunch. At TILE 32 a cell of 2 is one pixel of a classic
+   * 16x16 texture.
+   */
+  pixelGrain(strength = 0.12, cell = 2) {
+    const cells = Math.max(1, Math.round(this.size / cell));
+    const tones = new Float32Array(cells * cells);
+    for (let i = 0; i < tones.length; i++) tones[i] = 1 + (this.rand() - 0.5) * 2 * strength;
+    for (let y = 0; y < this.size; y++) {
+      const cy = Math.min(cells - 1, Math.floor((y / this.size) * cells));
+      for (let x = 0; x < this.size; x++) {
+        const cx = Math.min(cells - 1, Math.floor((x / this.size) * cells));
+        this.shade(x, y, tones[cy * cells + cx]);
+      }
+    }
+    return this;
+  }
+
+  /**
+   * Blocky clumps of a colour, snapped to a `cell`-pixel grid and wrapped at
+   * the edges.
+   *
+   * The square edges are the point. Soft blobs read as stains on a surface;
+   * clumps of whole texels read as lumps *of* it — which is the difference
+   * between dirt that looks painted and dirt that looks like dirt.
+   */
+  clusters(color, count, alpha = 0.4, minCells = 1, maxCells = 3, cell = 2) {
+    for (let i = 0; i < count; i++) {
+      const w = (minCells + Math.floor(this.rand() * (maxCells - minCells + 1))) * cell;
+      const h = (minCells + Math.floor(this.rand() * (maxCells - minCells + 1))) * cell;
+      const x0 = Math.floor(this.rand() * (this.size / cell)) * cell;
+      const y0 = Math.floor(this.rand() * (this.size / cell)) * cell;
+      const strength = alpha * (0.65 + this.rand() * 0.7);
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          this.blend(mod(x0 + x, this.size), mod(y0 + y, this.size), color, strength);
+        }
+      }
+    }
+    return this;
+  }
+
   /** Scatter individual pixels of a colour, e.g. sand sparkle or ore flecks. */
   speckle(color, count, alpha = 1) {
     for (let i = 0; i < count; i++) {
