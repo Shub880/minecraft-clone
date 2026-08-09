@@ -26,10 +26,31 @@
 
   <!-- Boot and world-loading screen. Reused for every long operation. -->
   <div id="boot" class="boot">
+    <canvas class="boot__canvas" id="boot-canvas"></canvas>
     <div class="boot__inner">
-      <div class="boot__logo" id="boot-title">VOXEL</div>
+      <!-- An isometric grass block. Drawn as polygons rather than assembled
+           from skewed CSS faces because the shape is then unambiguous, and
+           animated by transform so it keeps moving on the compositor while the
+           main thread is inside terrain generation. -->
+      <svg class="cube" viewBox="0 0 100 100" aria-hidden="true">
+        <polygon points="50,14 86,32 50,50 14,32" fill="#7fbb4d"/>
+        <polygon points="14,32 50,50 50,86 14,68" fill="#6d4f31"/>
+        <polygon points="86,32 50,50 50,86 86,68" fill="#8a6540"/>
+        <polygon points="14,32 50,50 50,59 14,41" fill="#5f8f3a"/>
+        <polygon points="86,32 50,50 50,59 86,41" fill="#74a944"/>
+      </svg>
+      <h1 class="boot__logo" id="boot-title">VOXEL</h1>
+      <p class="boot__subtitle" id="boot-subtitle">An infinite block world</p>
+
+      <ol class="boot__stages" id="boot-stages"></ol>
+
       <div class="boot__bar"><div class="boot__fill" id="boot-fill"></div></div>
-      <div class="boot__status" id="boot-status">Starting up</div>
+      <div class="boot__meta">
+        <span class="boot__status" id="boot-status">Starting up</span>
+        <span class="boot__percent" id="boot-percent">0%</span>
+      </div>
+
+      <p class="boot__tip" id="boot-tip"></p>
     </div>
   </div>
 

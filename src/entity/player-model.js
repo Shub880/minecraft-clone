@@ -12,7 +12,10 @@
  */
 
 import * as THREE from 'three';
-import { buildBoxGeometry, createModelMaterial, applySkyToModel } from '../render/model.js';
+import {
+  buildBoxGeometry, buildCrossGeometry, createModelMaterial, applySkyToModel, setBoxLayers,
+} from '../render/model.js';
+import { BLOCKS, Render } from '../world/blocks.js';
 import { Perspective } from './player.js';
 
 const HEAD = 0.5;
@@ -23,6 +26,9 @@ const LEG_LENGTH = 0.55;
 
 const HIP_Y = LEG_LENGTH;
 const SHOULDER_Y = HIP_Y + BODY_HEIGHT;
+
+/** Held block size on the avatar, roughly a third of a world block. */
+const HELD_SIZE = 0.34;
 
 export class PlayerModel {
   /**
@@ -71,7 +77,53 @@ export class PlayerModel {
     this.rightLeg.position.set(0.12, HIP_Y, 0);
     this.group.add(this.rightLeg);
 
+    // The held block is parented to the right arm so it swings with it. In
+    // third person the arm is the only thing telling another player what you
+    // are about to place, so an empty fist there would be a lie.
+    this.cutoutMaterial = createModelMaterial(atlas.texture, { cutout: true });
+    this.cutoutMaterial.side = THREE.DoubleSide;
+
+    this.held = new THREE.Mesh(
+      buildBoxGeometry(HELD_SIZE, HELD_SIZE, HELD_SIZE, [0, 0, 0, 0, 0, 0]),
+      this.material,
+    );
+    this.held.position.set(0, -ARM_LENGTH - HELD_SIZE * 0.35, -HELD_SIZE * 0.4);
+    this.held.rotation.set(0.2, 0.4, 0);
+    this.held.frustumCulled = false;
+    this.held.visible = false;
+    this.rightArm.add(this.held);
+
+    this.heldCross = new THREE.Mesh(buildCrossGeometry(0, 0.42), this.cutoutMaterial);
+    this.heldCross.position.set(0, -ARM_LENGTH - 0.3, -0.08);
+    this.heldCross.frustumCulled = false;
+    this.heldCross.visible = false;
+    this.rightArm.add(this.heldCross);
+
+    this.heldId = -1;
     this.swingTime = -1;
+  }
+
+  /** Show the block the player is carrying. `id` of 0 is an empty hand. */
+  setHeld(id) {
+    if (id === this.heldId) return;
+    this.heldId = id;
+
+    const block = BLOCKS[id];
+    if (!block || id === 0) {
+      this.held.visible = false;
+      this.heldCross.visible = false;
+      return;
+    }
+    if (block.render === Render.CROSS) {
+      this.held.visible = false;
+      this.heldCross.visible = true;
+      this.heldCross.geometry.dispose();
+      this.heldCross.geometry = buildCrossGeometry(block.tiles[2], 0.42);
+    } else {
+      this.heldCross.visible = false;
+      this.held.visible = true;
+      setBoxLayers(this.held.geometry, block.tiles);
+    }
   }
 
   /** `pivotOffset` shifts the geometry down so the mesh rotates about its top. */
@@ -101,7 +153,9 @@ export class PlayerModel {
     if (!this.group.visible) return;
 
     applySkyToModel(this.material, sky, brightness);
+    applySkyToModel(this.cutoutMaterial, sky, brightness);
     this.material.uniforms.uBlockLight.value = blockLight;
+    this.cutoutMaterial.uniforms.uBlockLight.value = blockLight;
 
     this.group.position.copy(player.position);
     this.group.rotation.y = player.yaw;
@@ -160,9 +214,12 @@ export class PlayerModel {
 
   dispose() {
     this.scene.remove(this.group);
-    for (const part of [this.head, this.body, this.leftArm, this.rightArm, this.leftLeg, this.rightLeg]) {
-      part.geometry.dispose();
-    }
+    const parts = [
+      this.head, this.body, this.leftArm, this.rightArm, this.leftLeg, this.rightLeg,
+      this.held, this.heldCross,
+    ];
+    for (const part of parts) part.geometry.dispose();
     this.material.dispose();
+    this.cutoutMaterial.dispose();
   }
 }

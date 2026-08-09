@@ -28,8 +28,15 @@ const PLACE_INTERVAL = 0.22;
 /** How often mining throws off particles and plays a dig sound. */
 const DIG_FEEDBACK_INTERVAL = 0.2;
 
+/** Seconds between swings at an animal, so one held click is not a blender. */
+const ATTACK_INTERVAL = 0.42;
+/** Damage a bare hand does. An animal with 10 health takes five swings. */
+const ATTACK_DAMAGE = 2;
+
 export class Interaction {
-  constructor({ world, player, inventory, input, particles, audio, highlight, viewModel, playerModel }) {
+  constructor({
+    world, player, inventory, input, particles, audio, highlight, viewModel, playerModel, mobs,
+  }) {
     this.world = world;
     this.player = player;
     this.inventory = inventory;
@@ -39,13 +46,17 @@ export class Interaction {
     this.highlight = highlight;
     this.viewModel = viewModel;
     this.playerModel = playerModel;
+    this.mobs = mobs ?? null;
 
     /** Snapshot of the current crosshair target, or null. */
     this.target = null;
+    /** The animal under the crosshair, when one is nearer than any block. */
+    this.mobTarget = null;
     this.progress = 0;
     this.miningKey = '';
     this.placeCooldown = 0;
     this.breakCooldown = 0;
+    this.attackCooldown = 0;
     this.digTimer = 0;
 
     this.enabled = true;
@@ -54,6 +65,7 @@ export class Interaction {
     this.onPlace = null;
 
     this._direction = new THREE.Vector3();
+    this._knockback = new THREE.Vector3();
     this._soundPosition = new THREE.Vector3();
     this._color = [1, 1, 1];
   }
@@ -65,9 +77,11 @@ export class Interaction {
   update(delta) {
     this.placeCooldown = Math.max(0, this.placeCooldown - delta);
     this.breakCooldown = Math.max(0, this.breakCooldown - delta);
+    this.attackCooldown = Math.max(0, this.attackCooldown - delta);
 
     if (!this.enabled || this.player.dead || this.player.gameMode === GameMode.SPECTATOR) {
       this.target = null;
+      this.mobTarget = null;
       this.progress = 0;
       this.highlight.hide();
       return;
@@ -75,8 +89,17 @@ export class Interaction {
 
     this.updateTarget();
 
-    if (this.input.isMouseDown(0)) this.updateMining(delta);
-    else this.cancelMining();
+    // An animal in front of the block you were about to mine takes the hit
+    // instead. Swinging at a cow and quarrying the hill behind it is the sort
+    // of thing that makes a world feel like a diagram rather than a place.
+    if (this.mobTarget) {
+      this.cancelMining();
+      if (this.input.isMouseDown(0)) this.attack();
+    } else if (this.input.isMouseDown(0)) {
+      this.updateMining(delta);
+    } else {
+      this.cancelMining();
+    }
 
     if (this.input.isMouseDown(2)) this.tryPlace();
 
@@ -89,8 +112,25 @@ export class Interaction {
     const direction = this.player.getLookDirection(this._direction);
     const hit = raycast(this.world, eye, direction, this.reach);
 
-    if (!hit.hit) {
-      this.target = null;
+    // Only a solid block stands between you and an animal. A blade of grass in
+    // front of a cow should not eat the swing — walking up to something in a
+    // meadow and mining the grass instead is exactly the kind of small wrong
+    // answer that makes a world feel like a collision diagram.
+    const blocked = hit.hit && this.world.tables.solid[hit.id] === 1;
+    const blockDistance = blocked ? hit.distance : Infinity;
+
+    const mobHit = this.mobs?.raycast(eye, direction, this.reach) ?? null;
+    this.mobTarget = mobHit && mobHit.distance <= blockDistance ? mobHit.mob : null;
+
+    if (!hit.hit || this.mobTarget) {
+      this.target = hit.hit
+        ? {
+          id: hit.id,
+          x: hit.x, y: hit.y, z: hit.z,
+          px: hit.px, py: hit.py, pz: hit.pz,
+          nx: hit.nx, ny: hit.ny, nz: hit.nz,
+        }
+        : null;
       this.highlight.hide();
       return;
     }
@@ -102,6 +142,31 @@ export class Interaction {
       nx: hit.nx, ny: hit.ny, nz: hit.nz,
     };
     this.highlight.setTarget(hit.x, hit.y, hit.z);
+  }
+
+  /** Swing at the animal under the crosshair, if there still is one. */
+  attack() {
+    // The target is re-cast every frame and an animal can walk out of the way
+    // between the cast and the swing, so this cannot assume there is one.
+    const mob = this.mobTarget;
+    if (!mob || !this.mobs) return;
+
+    this.swing();
+    if (this.attackCooldown > 0) return;
+    this.attackCooldown = ATTACK_INTERVAL;
+
+    const direction = this._direction;
+    // Knockback is horizontal only; the vertical pop is added by the mob so a
+    // hit always lifts an animal off the ground by the same amount.
+    const length = Math.hypot(direction.x, direction.z) || 1;
+    this._knockback.set(direction.x / length, 0, direction.z / length);
+
+    if (!this.mobs.hit(mob, ATTACK_DAMAGE, this._knockback)) return;
+    this.particles.blockHit(
+      Math.floor(mob.position.x), Math.floor(mob.position.y + mob.height * 0.5),
+      Math.floor(mob.position.z), 0, 1, 0,
+      [mob.tint[0] * 0.8, mob.tint[1] * 0.5, mob.tint[2] * 0.5], 6,
+    );
   }
 
   // -------------------------------------------------------------------------

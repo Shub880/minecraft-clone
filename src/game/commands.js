@@ -12,6 +12,7 @@
 import { GameMode } from '../entity/player.js';
 import { getBlockByName, BLOCKS, AIR } from '../world/blocks.js';
 import { DAY_LENGTH } from '../render/sky.js';
+import { findNearestStructure, STRUCTURE_NAMES } from '../world/worldgen/structures.js';
 
 /**
  * @param {object} game  the running session, see game.js
@@ -180,6 +181,44 @@ export function createCommands(game) {
         if (!Number.isFinite(value)) return fail('Usage: /daylength <seconds>');
         game.settings.set('dayLength', value);
         return ok(value === 0 ? 'Time frozen.' : `A day now takes ${value} seconds.`);
+      },
+    },
+
+    locate: {
+      usage: `/locate <${STRUCTURE_NAMES.join('|')}>`,
+      describe: 'Find the nearest structure of a kind',
+      run: (args) => {
+        const name = (args[0] ?? '').toLowerCase().replace(/[\s-]/g, '_');
+        if (!STRUCTURE_NAMES.includes(name)) {
+          return fail(`Usage: /locate <${STRUCTURE_NAMES.join('|')}>`);
+        }
+        const p = game.player.position;
+        const found = findNearestStructure(game.world.generator, name, p.x, p.z);
+        if (!found) return fail(`No ${name.replace(/_/g, ' ')} found nearby.`);
+        return ok(
+          `Nearest ${name.replace(/_/g, ' ')}: ${found.x}, ${found.y}, ${found.z} `
+          + `(${Math.round(found.distance)} blocks away)`,
+        );
+      },
+    },
+
+    mobs: {
+      usage: '/mobs <spawn|clear|count>',
+      describe: 'Spawn, remove or count the animals around you',
+      run: (args) => {
+        const action = (args[0] ?? 'count').toLowerCase();
+        if (!game.mobs) return fail('Animals are switched off.');
+        if (action === 'clear') {
+          const removed = game.mobs.clear();
+          return ok(`Removed ${removed} animal${removed === 1 ? '' : 's'}.`);
+        }
+        if (action === 'spawn') {
+          const spawned = game.mobs.spawnBurst(game.player.position, Number(args[1]) || 6);
+          return spawned > 0
+            ? ok(`Spawned ${spawned} animal${spawned === 1 ? '' : 's'}.`)
+            : fail('Nowhere nearby for an animal to stand.');
+        }
+        return ok(`${game.mobs.count} animals loaded.`);
       },
     },
 

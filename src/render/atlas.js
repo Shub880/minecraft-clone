@@ -146,6 +146,24 @@ const C = {
   pants: [56, 62, 96],
   shoe: [58, 52, 48],
 
+  wool: [232, 234, 236],
+  woolShade: [204, 207, 210],
+  hay: [190, 156, 46],
+  hayDark: [150, 120, 30],
+  hayBand: [126, 100, 24],
+
+  pigSkin: [238, 148, 152],
+  pigSnout: [216, 110, 116],
+  cowHide: [58, 44, 38],
+  cowPatch: [232, 232, 226],
+  cowHorn: [222, 208, 170],
+  chickenBody: [238, 238, 238],
+  chickenBeak: [244, 178, 46],
+  chickenWattle: [214, 62, 52],
+  chickenFoot: [232, 168, 46],
+  sheepFleece: [236, 236, 232],
+  sheepFace: [226, 206, 186],
+
   furnaceFront: [64, 64, 68],
   furnaceHole: [32, 30, 30],
   chestWood: [146, 106, 56],
@@ -187,6 +205,98 @@ const painters = {
   stone_bricks: (p) => p.fill(C.stone).grain(0.09, 8, 2).pixelGrain(0.08)
     .bricks(C.stoneDark, 4, 0.8).blobs(C.stoneDark, 2, 4, 0.16)
     .clusters(C.stoneDark, 10, 0.22, 1, 2).bevel(1.06, 0.92),
+
+  mossy_stone_bricks: (p) => p.fill(C.stone).grain(0.09, 8, 2)
+    .bricks(C.stoneDark, 4, 0.8)
+    .blobs(C.moss, 5, 7, 0.6).blobs(C.mossDark, 3, 4, 0.42)
+    .clusters(C.mossDark, 10, 0.3, 1, 2).bevel(1.06, 0.92),
+
+  cracked_stone_bricks: (p) => {
+    p.fill(C.stone).grain(0.11, 8, 2).pixelGrain(0.09)
+      .bricks(C.stoneDark, 4, 0.8).clusters(C.stoneDark, 10, 0.24, 1, 2);
+    // A few wandering fractures that ignore the mortar grid, which is what
+    // separates cracked masonry from masonry with wide joints.
+    for (let i = 0; i < 5; i++) {
+      let x = Math.floor(p.rand() * p.size);
+      let y = Math.floor(p.rand() * p.size);
+      const steps = 10 + Math.floor(p.rand() * 14);
+      const horizontal = p.rand() < 0.5;
+      for (let s = 0; s < steps; s++) {
+        p.blend(x, y, [46, 46, 52], 0.8);
+        if (horizontal) {
+          x = (x + 1) % p.size;
+          if (p.rand() < 0.4) y = (y + (p.rand() < 0.5 ? 1 : -1) + p.size) % p.size;
+        } else {
+          y = (y + 1) % p.size;
+          if (p.rand() < 0.4) x = (x + (p.rand() < 0.5 ? 1 : -1) + p.size) % p.size;
+        }
+      }
+    }
+    return p.bevel(1.06, 0.92);
+  },
+
+  chiseled_sandstone: (p) => {
+    p.fill(C.sandstone).grain(0.07, 8, 3);
+    p.rect(0, 0, p.size, 3, C.sandDark, 0.7).rect(0, p.size - 3, p.size, 3, C.sandDark, 0.7);
+    // A carved panel: a recessed square with a simple glyph, the detail that
+    // makes a temple wall read as built rather than quarried.
+    p.strokeRect(5, 6, 22, 20, C.sandDark, 0.85);
+    p.strokeRect(6, 7, 20, 18, [255, 250, 226], 0.35);
+    p.rect(13, 11, 6, 4, C.sandDark, 0.6);
+    p.rect(10, 17, 12, 3, C.sandDark, 0.6);
+    p.rect(15, 15, 2, 4, C.sandDark, 0.6);
+    return p.bevel(1.06, 0.9);
+  },
+
+  hay_side: (p) => {
+    p.fill(C.hay).grain(0.14, 4, 2).streaks(C.hayDark, 14, 0.32);
+    // Binding twine top and bottom.
+    p.rect(0, 1, p.size, 3, C.hayBand, 0.8).rect(0, p.size - 4, p.size, 3, C.hayBand, 0.8);
+    return p.speckle([236, 208, 110], 40, 0.4).bevel(1.06, 0.88);
+  },
+  hay_top: (p) => p.fill(C.hayDark).grain(0.16, 6, 3)
+    .speckle(C.hay, 90, 0.6).speckle([236, 208, 110], 40, 0.5)
+    .blobs([120, 94, 22], 4, 5, 0.35).outline(0.86),
+
+  cobweb: (p) => {
+    p.clear();
+    const centre = p.size / 2;
+    const strands = 8;
+    // Radial spokes first, then the spiral that hangs between them.
+    for (let s = 0; s < strands; s++) {
+      const angle = (s / strands) * Math.PI * 2;
+      for (let r = 0; r < centre; r++) {
+        const x = Math.round(centre + Math.cos(angle) * r);
+        const y = Math.round(centre + Math.sin(angle) * r);
+        if (x < 0 || y < 0 || x >= p.size || y >= p.size) continue;
+        p.set(x, y, 236, 240, 244, 230);
+      }
+    }
+    for (let ring = 4; ring < centre; ring += 4) {
+      for (let a = 0; a < 64; a++) {
+        const angle = (a / 64) * Math.PI * 2;
+        // Sag the thread between spokes so the rings are not clean circles.
+        const sag = Math.abs(Math.sin(angle * strands / 2)) * 1.6;
+        const x = Math.round(centre + Math.cos(angle) * (ring - sag));
+        const y = Math.round(centre + Math.sin(angle) * (ring - sag));
+        if (x < 0 || y < 0 || x >= p.size || y >= p.size) continue;
+        p.set(x, y, 220, 226, 232, 200);
+      }
+    }
+    return p;
+  },
+
+  // --- Wool ---------------------------------------------------------------
+  wool: (p) => woolTexture(p, C.wool, C.woolShade),
+  wool_light_gray: (p) => woolTexture(p, [156, 160, 164], [126, 130, 134]),
+  wool_black: (p) => woolTexture(p, [40, 42, 46], [26, 27, 30]),
+  wool_brown: (p) => woolTexture(p, [116, 78, 46], [92, 60, 34]),
+  wool_red: (p) => woolTexture(p, [166, 52, 46], [132, 38, 34]),
+  wool_orange: (p) => woolTexture(p, [222, 126, 42], [186, 100, 28]),
+  wool_yellow: (p) => woolTexture(p, [232, 196, 62], [198, 164, 42]),
+  wool_green: (p) => woolTexture(p, [96, 142, 54], [72, 112, 40]),
+  wool_blue: (p) => woolTexture(p, [64, 82, 168], [46, 62, 136]),
+  wool_pink: (p) => woolTexture(p, [230, 156, 182], [204, 126, 156]),
 
   bricks: (p) => p.fill(C.bricks).grain(0.11, 8, 2).pixelGrain(0.07)
     .bricks(C.mortar, 4, 0.95).clusters([148, 74, 56], 10, 0.2, 1, 2).bevel(1.06, 0.9),
@@ -350,6 +460,12 @@ const painters = {
   oak_planks: (p) => p.fill(C.planks).grain(0.1, 4, 2).pixelGrain(0.06)
     .streaks(C.planksDark, 6, 0.2).planks(C.planksDark, 4, 0.7)
     .clusters(C.planksDark, 10, 0.16, 1, 3).bevel(1.06, 0.9),
+  spruce_planks: (p) => p.fill([124, 94, 58]).grain(0.11, 4, 2).pixelGrain(0.06)
+    .streaks([86, 64, 38], 6, 0.24).planks([80, 58, 34], 4, 0.7)
+    .clusters([86, 64, 38], 10, 0.18, 1, 3).bevel(1.07, 0.88),
+  birch_planks: (p) => p.fill([196, 174, 126]).grain(0.09, 4, 2).pixelGrain(0.05)
+    .streaks([160, 138, 96], 6, 0.2).planks([150, 128, 88], 4, 0.65)
+    .clusters([160, 138, 96], 10, 0.14, 1, 3).bevel(1.05, 0.9),
 
   bookshelf: (p) => {
     p.fill(C.planks).grain(0.08, 4, 2).streaks(C.planksDark, 4, 0.18);
@@ -621,12 +737,117 @@ const painters = {
     p.rect(0, 19, p.size, 2, C.shirtDark, 0.7);
     return p.bevel(1.06, 0.9);
   },
+  /**
+   * The same sleeve, wrist end first.
+   *
+   * The avatar's arm hangs from the shoulder, so its hand is at the bottom of
+   * the tile. The first-person arm hangs the other way — the fist is at the
+   * pivot, holding the item, and the elbow runs off the bottom of the screen —
+   * so it needs the hand at the top. Two tiles is cheaper and far clearer than
+   * flipping texture coordinates on one of them.
+   */
+  skin_arm_fp: (p) => {
+    p.fill(C.shirt).grain(0.07, 6, 2);
+    p.rect(0, 0, p.size, 12, C.skin, 1);
+    p.rect(0, 11, p.size, 2, C.shirtDark, 0.7);
+    return p.bevel(1.06, 0.9);
+  },
   skin_leg: (p) => {
     p.fill(C.pants).grain(0.07, 6, 2);
     p.rect(0, 26, p.size, 6, C.shoe, 1);
     return p.bevel(1.06, 0.9);
   },
+
+  // --- Animal hides -------------------------------------------------------
+  // Also not referenced by any block. The mob renderer draws from this atlas
+  // for the same reason the avatar does: one texture bind for the whole world.
+  mob_pig: (p) => p.fill(C.pigSkin).grain(0.07, 6, 2).pixelGrain(0.05)
+    .clusters(C.pigSnout, 8, 0.16, 1, 2).bevel(1.05, 0.92),
+  mob_pig_face: (p) => {
+    p.fill(C.pigSkin).grain(0.06, 6, 2);
+    p.rect(9, 15, 14, 12, C.pigSnout, 1);
+    p.rect(12, 19, 3, 4, [140, 66, 74], 1).rect(18, 19, 3, 4, [140, 66, 74], 1);
+    eyes(p, 6, 8, 6);
+    return p.bevel(1.05, 0.92);
+  },
+  mob_pig_leg: (p) => p.fill(C.pigSnout).grain(0.08, 6, 2)
+    .rect(0, 24, p.size, 8, [166, 84, 90], 0.8).bevel(1.05, 0.9),
+
+  mob_cow: (p) => {
+    p.fill(C.cowHide).grain(0.1, 6, 2).pixelGrain(0.06);
+    // Irregular white patches are the whole silhouette of a cow.
+    p.blobs(C.cowPatch, 4, 9, 0.95).blobs(C.cowPatch, 3, 5, 0.9);
+    return p.bevel(1.06, 0.9);
+  },
+  mob_cow_face: (p) => {
+    p.fill(C.cowHide).grain(0.08, 6, 2);
+    p.rect(0, 0, p.size, 12, C.cowPatch, 0.9);
+    p.rect(10, 18, 12, 10, [176, 140, 132], 1);
+    p.rect(13, 22, 2, 3, [90, 66, 62], 1).rect(18, 22, 2, 3, [90, 66, 62], 1);
+    eyes(p, 5, 9, 5);
+    return p.bevel(1.05, 0.92);
+  },
+  mob_cow_leg: (p) => p.fill(C.cowHide).grain(0.09, 6, 2)
+    .rect(0, 24, p.size, 8, [30, 24, 22], 0.85).bevel(1.05, 0.9),
+  mob_cow_horn: (p) => p.fill(C.cowHorn).grain(0.09, 6, 2)
+    .rect(0, 0, p.size, 8, [190, 172, 136], 0.7).bevel(1.08, 0.88),
+
+  mob_sheep_wool: (p) => woolTexture(p, C.sheepFleece, [206, 206, 200])
+    .blobs([248, 248, 244], 5, 6, 0.35),
+  mob_sheep_face: (p) => {
+    p.fill(C.sheepFace).grain(0.07, 6, 2);
+    p.rect(0, 0, p.size, 8, C.sheepFleece, 0.85);
+    p.rect(12, 22, 8, 4, [186, 162, 142], 1);
+    eyes(p, 5, 10, 5);
+    return p.bevel(1.05, 0.92);
+  },
+  mob_sheep_leg: (p) => p.fill(C.sheepFace).grain(0.08, 6, 2)
+    .rect(0, 22, p.size, 10, [176, 152, 132], 0.9).bevel(1.05, 0.9),
+
+  mob_chicken: (p) => p.fill(C.chickenBody).grain(0.07, 8, 2).pixelGrain(0.05)
+    .clusters([214, 214, 214], 10, 0.2, 1, 2).bevel(1.05, 0.93),
+  mob_chicken_face: (p) => {
+    p.fill(C.chickenBody).grain(0.06, 6, 2);
+    p.rect(11, 2, 10, 7, C.chickenWattle, 1);
+    p.rect(12, 20, 8, 7, C.chickenBeak, 1);
+    p.rect(13, 26, 6, 4, C.chickenWattle, 1);
+    eyes(p, 5, 12, 5);
+    return p.bevel(1.05, 0.92);
+  },
+  mob_chicken_foot: (p) => p.fill(C.chickenFoot).grain(0.1, 6, 2)
+    .clusters([204, 138, 32], 8, 0.3, 1, 2).bevel(1.06, 0.9),
 };
+
+/** Fibrous, slightly clumped surface — the look every wool colour shares. */
+function woolTexture(p, base, shade) {
+  p.fill(base).grain(0.09, 10, 3).pixelGrain(0.07);
+  // Short curled strands, drawn in both tones so the pile reads as depth.
+  for (let i = 0; i < 90; i++) {
+    const x = Math.floor(p.rand() * p.size);
+    const y = Math.floor(p.rand() * p.size);
+    const dark = p.rand() < 0.55;
+    const length = 2 + Math.floor(p.rand() * 3);
+    for (let k = 0; k < length; k++) {
+      const cx = (x + k) % p.size;
+      const cy = (y + (k > 1 ? 1 : 0)) % p.size;
+      p.blend(cx, cy, dark ? shade : [255, 255, 255], dark ? 0.5 : 0.28);
+    }
+  }
+  return p.clusters(shade, 12, 0.2, 1, 2).bevel(1.04, 0.93);
+}
+
+/**
+ * A symmetric pair of eyes on an animal head tile.
+ * `inset` is the gap from each edge, so a wider head keeps its eyes apart.
+ */
+function eyes(p, inset, top, size) {
+  const right = p.size - inset - size;
+  p.rect(inset, top, size, size, [250, 250, 250], 1);
+  p.rect(right, top, size, size, [250, 250, 250], 1);
+  p.rect(inset + 1, top + 1, size - 2, size - 2, [38, 30, 28], 1);
+  p.rect(right + 1, top + 1, size - 2, size - 2, [38, 30, 28], 1);
+  return p;
+}
 
 // ---------------------------------------------------------------------------
 // Shared painter helpers
@@ -736,6 +957,9 @@ const SURFACE_FAMILIES = [
   [/_log_side$/, { relief: 1.2, roughness: 0.9 }],
   [/_log_top$/, { relief: 0.9, roughness: 0.88 }],
   [/^skin_/, { relief: 0.35, roughness: 0.95 }],
+  [/^mob_/, { relief: 0.35, roughness: 0.95 }],
+  [/^wool/, { relief: 0.8, roughness: 0.97 }],
+  [/_planks$/, { relief: 1.1, roughness: 0.82 }],
   [/terracotta$/, { relief: 0.8, roughness: 0.72 }],
   [/^sandstone/, { relief: 0.9, roughness: 0.9 }],
 ];
@@ -748,7 +972,13 @@ const SURFACES = {
   gravel: { relief: 1.7 },
   bedrock: { relief: 1.7 },
   stone_bricks: { relief: 1.35 },
+  mossy_stone_bricks: { relief: 1.4 },
+  cracked_stone_bricks: { relief: 1.45 },
+  chiseled_sandstone: { relief: 1.25, roughness: 0.9 },
   bricks: { relief: 1.35, roughness: 0.8 },
+  hay_side: { relief: 1.3, roughness: 0.96 },
+  hay_top: { relief: 1.4, roughness: 0.96 },
+  cobweb: { relief: 0.2, roughness: 0.6 },
   basalt_side: { relief: 1.3 },
   basalt_top: { relief: 1.3 },
   coarse_dirt: { relief: 1.3 },
@@ -817,7 +1047,11 @@ function surfaceFor(name) {
 }
 
 export const EXTRA_TEXTURES = [
-  'skin_face', 'skin_head', 'skin_hair', 'skin_body', 'skin_arm', 'skin_leg',
+  'skin_face', 'skin_head', 'skin_hair', 'skin_body', 'skin_arm', 'skin_arm_fp', 'skin_leg',
+  'mob_pig', 'mob_pig_face', 'mob_pig_leg',
+  'mob_cow', 'mob_cow_face', 'mob_cow_leg', 'mob_cow_horn',
+  'mob_sheep_wool', 'mob_sheep_face', 'mob_sheep_leg',
+  'mob_chicken', 'mob_chicken_face', 'mob_chicken_foot',
 ];
 
 /**
@@ -1147,5 +1381,5 @@ export function paintTextureToCanvas(name, scale = 1) {
 export const CUTOUT_TEXTURES = new Set([
   'oak_leaves', 'birch_leaves', 'spruce_leaves', 'cherry_leaves',
   'grass_blade', 'fern', 'poppy', 'dandelion', 'cornflower', 'dead_bush',
-  'sugar_cane', 'torch', 'glass', 'ice',
+  'sugar_cane', 'torch', 'glass', 'ice', 'cobweb',
 ]);

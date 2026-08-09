@@ -193,6 +193,25 @@ export const COARSE_DIRT = 57;
 export const MUD = 58;
 export const MOSS_BLOCK = 59;
 export const AMETHYST = 60;
+// Added for structure generation: village houses, temples, dungeons and ruins
+// are built from these, and wool doubles as the colour a sheep is wearing.
+export const SPRUCE_PLANKS = 61;
+export const BIRCH_PLANKS = 62;
+export const CHISELED_SANDSTONE = 63;
+export const MOSSY_STONE_BRICKS = 64;
+export const CRACKED_STONE_BRICKS = 65;
+export const HAY_BLOCK = 66;
+export const COBWEB = 67;
+export const WHITE_WOOL = 68;
+export const LIGHT_GRAY_WOOL = 69;
+export const BLACK_WOOL = 70;
+export const BROWN_WOOL = 71;
+export const RED_WOOL = 72;
+export const ORANGE_WOOL = 73;
+export const YELLOW_WOOL = 74;
+export const GREEN_WOOL = 75;
+export const BLUE_WOOL = 76;
+export const PINK_WOOL = 77;
 
 define(AIR, 'air', {
   render: Render.NONE,
@@ -346,6 +365,33 @@ define(MELON, 'melon', {
   textures: { top: 'melon_top', bottom: 'melon_top', side: 'melon_side' },
 });
 
+define(SPRUCE_PLANKS, 'spruce_planks', { hardness: 2, tool: 'axe', sound: 'wood', flammable: true, textures: 'spruce_planks' });
+define(BIRCH_PLANKS, 'birch_planks', { hardness: 2, tool: 'axe', sound: 'wood', flammable: true, textures: 'birch_planks' });
+define(CHISELED_SANDSTONE, 'chiseled_sandstone', {
+  hardness: 0.8, tool: 'pickaxe',
+  textures: { top: 'sandstone_top', bottom: 'sandstone_top', side: 'chiseled_sandstone' },
+});
+define(MOSSY_STONE_BRICKS, 'mossy_stone_bricks', { hardness: 1.5, tool: 'pickaxe', textures: 'mossy_stone_bricks' });
+define(CRACKED_STONE_BRICKS, 'cracked_stone_bricks', { hardness: 1.5, tool: 'pickaxe', textures: 'cracked_stone_bricks' });
+define(HAY_BLOCK, 'hay_block', {
+  hardness: 0.5, sound: 'grass',
+  textures: { top: 'hay_top', bottom: 'hay_top', side: 'hay_side' },
+});
+
+// Wool is greyscale-painted and tinted per variant, so one texture serves all
+// twelve colours the way the grass texture serves every biome.
+const woolOptions = { hardness: 0.8, sound: 'grass', flammable: true, textures: 'wool' };
+define(WHITE_WOOL, 'white_wool', woolOptions);
+define(LIGHT_GRAY_WOOL, 'light_gray_wool', { ...woolOptions, textures: 'wool_light_gray' });
+define(BLACK_WOOL, 'black_wool', { ...woolOptions, textures: 'wool_black' });
+define(BROWN_WOOL, 'brown_wool', { ...woolOptions, textures: 'wool_brown' });
+define(RED_WOOL, 'red_wool', { ...woolOptions, textures: 'wool_red' });
+define(ORANGE_WOOL, 'orange_wool', { ...woolOptions, textures: 'wool_orange' });
+define(YELLOW_WOOL, 'yellow_wool', { ...woolOptions, textures: 'wool_yellow' });
+define(GREEN_WOOL, 'green_wool', { ...woolOptions, textures: 'wool_green' });
+define(BLUE_WOOL, 'blue_wool', { ...woolOptions, textures: 'wool_blue' });
+define(PINK_WOOL, 'pink_wool', { ...woolOptions, textures: 'wool_pink' });
+
 const plantOptions = {
   render: Render.CROSS, solid: false, opaque: false, lightFilter: 0,
   hardness: 0, sound: 'grass', flammable: true, replaceable: true,
@@ -358,6 +404,13 @@ define(FLOWER_DANDELION, 'dandelion', { ...plantOptions, textures: 'dandelion' }
 define(FLOWER_CORNFLOWER, 'cornflower', { ...plantOptions, textures: 'cornflower' });
 define(DEAD_BUSH, 'dead_bush', { ...plantOptions, textures: 'dead_bush', drops: null });
 define(SUGAR_CANE, 'sugar_cane', { ...plantOptions, tint: Tint.FOLIAGE, textures: 'sugar_cane', sway: 0.55 });
+// Cobweb hangs in dungeon corners. It is a cross like a plant, but it does not
+// sway, cannot be walked over as if it were not there, and drags the player.
+define(COBWEB, 'cobweb', {
+  render: Render.CROSS, solid: false, opaque: false, lightFilter: 1,
+  hardness: 1.2, sound: 'grass', replaceable: false, drops: null, sway: 0,
+  textures: 'cobweb',
+});
 
 // ---------------------------------------------------------------------------
 // Flat lookup tables
@@ -463,7 +516,8 @@ export const CREATIVE_GROUPS = [
   {
     name: 'Wood',
     blocks: [
-      OAK_LOG, BIRCH_LOG, SPRUCE_LOG, CHERRY_LOG, OAK_PLANKS, BOOKSHELF,
+      OAK_LOG, BIRCH_LOG, SPRUCE_LOG, CHERRY_LOG,
+      OAK_PLANKS, SPRUCE_PLANKS, BIRCH_PLANKS, BOOKSHELF,
       OAK_LEAVES, BIRCH_LEAVES, SPRUCE_LEAVES, CHERRY_LEAVES,
     ],
   },
@@ -471,13 +525,21 @@ export const CREATIVE_GROUPS = [
     name: 'Plants',
     blocks: [
       GRASS_BLADE, FERN, FLOWER_POPPY, FLOWER_DANDELION, FLOWER_CORNFLOWER,
-      DEAD_BUSH, CACTUS, SUGAR_CANE, PUMPKIN, MELON,
+      DEAD_BUSH, CACTUS, SUGAR_CANE, PUMPKIN, MELON, HAY_BLOCK,
+    ],
+  },
+  {
+    name: 'Wool',
+    blocks: [
+      WHITE_WOOL, LIGHT_GRAY_WOOL, BLACK_WOOL, BROWN_WOOL, RED_WOOL,
+      ORANGE_WOOL, YELLOW_WOOL, GREEN_WOOL, BLUE_WOOL, PINK_WOOL,
     ],
   },
   {
     name: 'Built',
     blocks: [
-      STONE_BRICKS, MOSSY_COBBLESTONE, BRICKS, GLASS, GLOWSTONE, TORCH,
+      STONE_BRICKS, MOSSY_STONE_BRICKS, CRACKED_STONE_BRICKS, MOSSY_COBBLESTONE,
+      BRICKS, CHISELED_SANDSTONE, GLASS, GLOWSTONE, TORCH, COBWEB,
       CRAFTING_TABLE, FURNACE, CHEST,
     ],
   },

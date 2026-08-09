@@ -130,7 +130,18 @@ const SKY_FRAGMENT = /* glsl */ `
 
       // Shade the underside using the density gradient, so clouds have volume.
       float shading = smoothstep(uCloudCoverage - 0.06, uCloudCoverage + 0.26, density);
-      vec3 cloud = mix(uCloudColor * 0.62, uCloudColor, shading);
+      vec3 cloud = mix(uCloudColor * 0.52, uCloudColor, shading);
+
+      // Silver lining. Light that has made it through the thin edge of a cloud
+      // comes out the far side, so the rim facing the sun glows and the deep
+      // middle stays grey. Sampling the field again a short step toward the sun
+      // is a cheap stand-in for measuring how much cloud the ray crossed.
+      vec2 towardSun = normalize(uSunDirection.xz + vec2(1e-4)) * 0.16;
+      float behind = fbm((cloudUv + towardSun) * 0.9);
+      float thinness = clamp((density - behind) * 3.4, 0.0, 1.0);
+      float sunFacing = pow(max(dot(dir, uSunDirection), 0.0), 3.0);
+      cloud += uSunColor * thinness * (0.35 + 0.9 * sunFacing) * uDaylight;
+
       cloud = mix(cloud, cloud * (0.5 + 0.5 * uDaylight), 1.0 - uDaylight);
       color = mix(color, cloud, coverage * 0.92);
     }

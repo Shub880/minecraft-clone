@@ -44,7 +44,7 @@ export class DebugOverlay {
     this.node.innerHTML = this.render(state);
   }
 
-  render({ engine, world, sky, player, atlas, meta }) {
+  render({ engine, world, sky, player, atlas, meta, mobs }) {
     const p = player.position;
     const bx = Math.floor(p.x);
     const by = Math.floor(p.y);
@@ -82,6 +82,7 @@ export class DebugOverlay {
       '',
       `time   ${sky.getClock()}${sky.frozen ? ' (frozen)' : ''}`,
       `chunks ${world.stats.chunksLoaded} loaded · ${world.stats.pending} pending`,
+      mobs ? `mobs   ${mobs.count} loaded${mobs.enabled ? '' : ' (off)'}` : '',
       `atlas  ${atlas.layers} layers   seed ${meta.seedText}`,
       memory,
       '',

@@ -14,12 +14,12 @@
  */
 
 import * as THREE from 'three';
-import { AIR, WATER, LAVA, getBlock } from '../world/blocks.js';
+import { AIR, WATER, LAVA, COBWEB, getBlock } from '../world/blocks.js';
 
 const WIDTH = 0.6;
 const HEIGHT = 1.8;
 const EYE_HEIGHT = 1.62;
-const SNEAK_EYE_HEIGHT = 1.44;
+const SNEAK_EYE_HEIGHT = 1.5;
 const STEP_HEIGHT = 0.6;
 
 /** Nudge used when snapping out of a block, so the next test does not re-hit. */
@@ -27,20 +27,35 @@ const SKIN = 1e-4;
 /** Largest distance resolved in one collision pass. */
 const MAX_SUBSTEP = 0.35;
 
-const GRAVITY = 30;
+/**
+ * Movement constants, in blocks and seconds.
+ *
+ * These are Minecraft's own numbers converted out of blocks-per-tick: gravity
+ * is 0.08 blocks per tick squared at twenty ticks a second, which is 32; a jump
+ * leaves the ground at the speed that peaks at 1.25 blocks; walking is 4.317
+ * and sprinting 5.612. They are worth matching exactly rather than
+ * approximating, because the distances they produce are the ones a player's
+ * hands already know — a one-block step, a four-block sprint jump, the height
+ * you can clear from a standstill.
+ */
+const GRAVITY = 32;
 const FLUID_GRAVITY = 7.5;
-const TERMINAL_SPEED = 62;
+const TERMINAL_SPEED = 78;
 const FLUID_TERMINAL_SPEED = 4.5;
 
-const JUMP_SPEED = 8.6;
+/** sqrt(2 * GRAVITY * 1.2522) — a jump clears one block and lands on it. */
+const JUMP_SPEED = 8.95;
 const SWIM_UP_SPEED = 4.2;
 
-const WALK_SPEED = 4.4;
-const SPRINT_SPEED = 6.1;
-const SNEAK_SPEED = 1.45;
-const SWIM_SPEED = 3.6;
-const FLY_SPEED = 12;
+const WALK_SPEED = 4.317;
+const SPRINT_SPEED = 5.612;
+const SNEAK_SPEED = 1.31;
+const SWIM_SPEED = 3.4;
+const FLY_SPEED = 10.9;
 const FLY_SPRINT_MULTIPLIER = 3.4;
+
+/** What a cobweb multiplies your speed by while you are inside one. */
+const WEB_DRAG = 0.16;
 
 const GROUND_ACCEL = 55;
 const AIR_ACCEL = 11;
@@ -52,8 +67,8 @@ const AIR_DRAG = 0.7;
 const FLUID_DRAG = 5.5;
 const FLY_DRAG = 9;
 
-/** Blocks of free fall tolerated before landing hurts. */
-const SAFE_FALL = 3.5;
+/** Blocks of free fall tolerated before landing hurts. Minecraft's is three. */
+const SAFE_FALL = 3;
 /** Seconds of breath underwater before drowning starts. */
 const MAX_BREATH = 15;
 
@@ -106,6 +121,7 @@ export class Player {
     this.onGround = false;
     this.inWater = false;
     this.inLava = false;
+    this.inWeb = false;
     this.submerged = false;
     this.sneaking = false;
     this.sprinting = false;
@@ -124,6 +140,10 @@ export class Player {
     /** Seconds of invulnerability left after taking a hit. */
     this.hurtCooldown = 0;
     this.hurtFlash = 0;
+    /** Camera dip left over from the last landing, 0..1. */
+    this.landShock = 0;
+    /** Which way the camera rolled when you were last hit, -1 or 1. */
+    this.hurtSide = 1;
     this.lavaTimer = 0;
     this.drownTimer = 0;
 
@@ -231,6 +251,9 @@ export class Player {
 
     this.hurtCooldown = Math.max(0, this.hurtCooldown - delta);
     this.hurtFlash = Math.max(0, this.hurtFlash - delta * 2.6);
+    // The landing dip recovers a little slower than it arrives, which is what
+    // makes it read as absorbing an impact rather than as a camera glitch.
+    this.landShock = Math.max(0, this.landShock - delta * 3.4);
   }
 
   applyLook(delta = 0) {
@@ -301,6 +324,14 @@ export class Player {
     this.inWater = feet === WATER || head === WATER;
     this.inLava = feet === LAVA || head === LAVA;
     this.submerged = head === WATER;
+    // A cobweb caught anywhere across the body counts; walking through one
+    // half-height and being unaffected would be worse than not having them.
+    this.inWeb = feet === COBWEB || head === COBWEB
+      || this.world.getBlock(
+        Math.floor(this.position.x),
+        Math.floor(this.position.y + 1),
+        Math.floor(this.position.z),
+      ) === COBWEB;
 
     if (this.inWater && !wasInWater && this.velocity.y < -6) {
       this.onEnterFluid?.('water', this.position);
@@ -387,12 +418,22 @@ export class Player {
       // A sprint jump carries a little extra momentum, which is what makes
       // sprint-jumping across gaps feel worth doing.
       if (this.sprinting) {
-        this.velocity.x += this._forward.x * 1.6;
-        this.velocity.z += this._forward.z * 1.6;
+        this.velocity.x += this._forward.x * 3;
+        this.velocity.z += this._forward.z * 3;
       }
     }
 
     this.velocity.y = Math.max(this.velocity.y - GRAVITY * delta, -TERMINAL_SPEED);
+
+    // A cobweb bleeds off almost all of your speed in every direction, which
+    // is the only reason to be careful about one.
+    if (this.inWeb) {
+      const decay = Math.exp(Math.log(WEB_DRAG) * delta * 6);
+      this.velocity.x *= decay;
+      this.velocity.z *= decay;
+      this.velocity.y = Math.max(this.velocity.y * decay, -1.2);
+      this.fallDistance = 0;
+    }
   }
 
   updateSwim(delta) {
@@ -660,6 +701,9 @@ export class Player {
     this.fallDistance = 0;
     if (distance < 0.6) return;
 
+    // Knees absorbing the drop. Capped well below the fall that would hurt, so
+    // an ordinary jump gives a nudge rather than a lurch.
+    this.landShock = Math.min(1, distance / 5);
     this.onFootstep?.(this.groundMaterial(), Math.min(1, distance / 6) * 0.9 + 0.3, true);
 
     if (this.invulnerable || this.inWater || this.inLava) return;
@@ -714,6 +758,7 @@ export class Player {
     this.health = Math.max(0, this.health - amount);
     this.hurtCooldown = 0.45;
     this.hurtFlash = 1;
+    this.hurtSide = Math.random() < 0.5 ? -1 : 1;
     this.onDamage?.(amount, cause);
 
     if (this.health <= 0) {
@@ -784,13 +829,26 @@ export class Player {
     const eye = this.getEyePosition();
     this._cameraTarget.copy(eye);
 
-    if (this.settings?.get('viewBobbing') && this.perspective === Perspective.FIRST) {
+    const firstPerson = this.perspective === Perspective.FIRST;
+    const bobbing = this.settings?.get('viewBobbing') && firstPerson;
+    let roll = 0;
+
+    if (bobbing) {
       const strength = this.bobStrength * 0.055;
       this._cameraTarget.y += Math.abs(Math.sin(this.bobPhase)) * strength;
       // The lateral component runs at half the vertical frequency, which is
       // what makes it read as alternating footfalls rather than a wobble.
       this._cameraTarget.x += Math.cos(this.bobPhase * 0.5) * strength * 0.6 * Math.cos(this.yaw);
       this._cameraTarget.z -= Math.cos(this.bobPhase * 0.5) * strength * 0.6 * Math.sin(this.yaw);
+      // A trace of roll on the same phase. It is barely perceptible frame to
+      // frame and is most of the difference between walking and gliding.
+      roll += Math.cos(this.bobPhase * 0.5) * this.bobStrength * 0.017;
+    }
+
+    if (firstPerson) {
+      // Landing drops the view and lets it spring back; a hit rocks it aside.
+      this._cameraTarget.y -= this.landShock * 0.22;
+      roll += this.hurtFlash * this.hurtFlash * 0.12 * this.hurtSide;
     }
 
     if (this.dead) {
@@ -798,7 +856,7 @@ export class Player {
       this._cameraTarget.y = this.position.y + 0.35;
       camera.rotation.set(THREE.MathUtils.clamp(this.pitch, -0.4, 0.4), this.yaw, 0.6, 'YXZ');
     } else {
-      camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+      camera.rotation.set(this.pitch, this.yaw, roll, 'YXZ');
     }
 
     if (this.perspective !== Perspective.FIRST) {
@@ -902,6 +960,7 @@ export class Player {
     }
 
     if (!Number.isFinite(this.fallDistance)) { this.fallDistance = 0; repaired = true; }
+    if (!Number.isFinite(this.landShock)) { this.landShock = 0; repaired = true; }
     if (!Number.isFinite(this.bobPhase)) { this.bobPhase = 0; repaired = true; }
     if (!Number.isFinite(this.bobStrength)) { this.bobStrength = 0; repaired = true; }
     if (!Number.isFinite(this.health)) { this.health = this.maxHealth; repaired = true; }

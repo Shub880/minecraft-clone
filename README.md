@@ -27,6 +27,7 @@ Requires a browser with WebGL 2 (`sampler2DArray` is used for the block atlas).
 | Sprint | `Ctrl` |
 | Fly (creative) | double-tap `Space` |
 | Mine | hold left mouse |
+| Attack an animal | left mouse, while aiming at one |
 | Place | right mouse |
 | Pick block | middle mouse |
 | Hotbar | scroll, or `1`–`9` |
@@ -37,8 +38,14 @@ Requires a browser with WebGL 2 (`sampler2DArray` is used for the block atlas).
 | Screenshot | `F2` |
 | Pause | `Esc` |
 
-Commands include `/tp`, `/gamemode`, `/time`, `/give`, `/rd`, `/seed` and
-`/help`.
+Movement uses Minecraft's own numbers rather than approximations of them:
+gravity of 32 blocks per second squared, a jump that peaks at 1.25 blocks,
+4.317 walking and 5.612 sprinting. The distances those produce — clearing a
+one-block step, the length of a sprint jump, how far you fall before it hurts —
+are the ones your hands already know.
+
+Commands include `/tp`, `/gamemode`, `/time`, `/give`, `/locate`, `/mobs`,
+`/rd`, `/seed` and `/help`.
 
 ### On a phone or tablet
 
@@ -73,6 +80,57 @@ behaviour, and a left-handed layout that mirrors the stick and the buttons.
 **Survival** costs you blocks to build with, and fall, lava, drowning and void
 damage are live. **Creative** gives you every block, flight and no damage.
 
+### Structures
+
+Villages, desert temples, igloos, swamp huts, ruined towers, buried dungeons,
+boulders and fallen logs generate across the world. `/locate village` will tell
+you where the nearest one of any kind is, and **Structures** on the world
+creation screen scales how common they all are.
+
+They are placed on a coarse grid — one cell per structure kind, a couple of
+dozen chunks across — where each cell decides from a hash of its own
+coordinates whether it holds something and where inside itself it sits.
+Generating a chunk asks only the handful of cells whose structures could
+possibly reach it, so a village eighty blocks across costs nothing to the
+chunks it does not touch, and both halves of one that straddles a chunk border
+agree exactly because both are computed from the same cell.
+
+### Animals
+
+Pigs, cows, sheep and chickens wander the surface, graze, watch you when you
+come close, and bolt when hit. Sheep come in five fleeces and yield the wool
+you can see them wearing. They spawn in a ring around the player, in herds, on
+ground their species actually lives on, and are forgotten once you walk far
+enough away.
+
+Every animal in the world is drawn in **one draw call**. Rather than parenting
+boxes into the scene graph — where a herd of cows would be forty draws on top
+of a world that already spends hundreds — each frame writes every animal's
+transformed vertices into one shared buffer. That also puts them in the same
+material as the terrain, so they light, fog and shadow exactly like the ground
+they are standing on.
+
+### Shaders
+
+**Settings → Shaders** owns the things that make the world look photographed
+rather than diagrammed. All of them are separate, and all of them are off by
+default on a phone.
+
+**Sun shadows** draw the world a second time from the sun's point of view. The
+baked skylight already knows what is under a roof, but it knows nothing about
+which *direction* the light comes from — so without this a tree lays no shadow
+on the grass beside it and a wall lights the same on both faces. Only a box
+around the player is covered, its edge dissolved rather than cut, and the light
+camera moves in whole texels so shadow edges do not crawl as you walk.
+**Cloud shadows** drift over the ground on top of that, which is the cheapest
+effect here and, over open country, one of the most convincing.
+
+**Screen effects** render the world into a floating-point buffer instead of
+straight to the screen. That is what makes the rest possible: colours are
+allowed past white, and **bloom** and **sun shafts** get to see how far past.
+Tone mapping then happens once, filmically, at the end — where it can keep a
+blown-out sky warm instead of washing it grey.
+
 ### Lighting
 
 **Settings → Video → Lighting** picks between two shading models.
@@ -98,11 +156,11 @@ smaller than reading it back.
 ```
 src/
   core/        renderer, input, settings, audio synthesis, IndexedDB saves
-  world/       chunk storage, lighting, streaming, terrain generation
-  render/      texture painting, greedy mesher, materials, sky, box models
-  entity/      player physics and the third-person avatar
+  world/       chunk storage, lighting, streaming, terrain and structures
+  render/      texture painting, greedy mesher, materials, sky, shadows, post
+  entity/      player physics, the third-person avatar, animals
   game/        session orchestration, interaction, inventory, particles
-  ui/          menus, HUD, inventory screen, chat, debug overlay, touch controls
+  ui/          menus, HUD, loading screen, chat, debug overlay, touch controls
 ```
 
 A few pieces are worth knowing about before changing anything:
@@ -136,16 +194,39 @@ A few pieces are worth knowing about before changing anything:
   because a single `width / 0` there poisons the projection matrix and every
   later frame culls the whole scene — the world goes black permanently while the
   HUD carries on as though nothing happened.
+- **`render/shadows.js`** writes distance-from-the-light into a float *colour*
+  target rather than reading a depth texture back. The obvious version was
+  tried first and its depth attachment stayed empty under this renderer, which
+  is a bad failure to inherit: a shadow term that silently always says "lit" is
+  invisible until you go looking for it.
+- **`render/post.js`** owns tone mapping whenever it is switched on, and
+  `core/engine.js` gives it up in the same call. Exactly one of the two may do
+  it — mapping on the way into the buffer would clip the very highlights the
+  bloom and sun shafts exist to find.
+- **`ui/loading.js`** splits its moving parts by who drives them. The checklist
+  and bar follow real progress; the block mark and the bar's sheen are CSS
+  transforms, so they keep running on the compositor through the long
+  synchronous stretches of terrain generation — which is exactly when a loading
+  screen has to prove it has not hung.
+- Anything written inside a GLSL template literal must avoid backticks, even in
+  a comment. One in a comment closes the template and the module fails to parse
+  with an error pointing at a word in the shader.
 
 ## Not implemented
 
 Deliberate omissions, so nothing here reads as a bug:
 
 - No crafting or tools. Mining speed depends on block hardness alone.
-- No mobs, and no dropped-item entities — mined blocks go straight to the
-  inventory, and dropping an item discards it.
+- No hostile mobs. The animals are passive: they can be hit, they panic and
+  run, and nothing in the world will come after you.
+- No dropped-item entities — mined blocks and what an animal yields go straight
+  to the inventory, and dropping an item discards it.
 - No fluid simulation. Water and lava are static blocks; placing water gives
   you one block of water, not a flow.
+- Chests, furnaces and crafting tables are decoration. Structures place them
+  because a room without them reads as unfinished, but none of them open.
+- The shadow map covers a box around the player rather than the whole view, so
+  distant terrain is lit but never shadowed.
 - Chunk generation and meshing run on the main thread under a per-frame time
   budget. The mesher is written to be worker-ready if that budget ever stops
   being enough.

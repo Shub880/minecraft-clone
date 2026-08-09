@@ -18,6 +18,7 @@ import * as THREE from 'three';
 import { World } from '../world/world.js';
 import { Player, GameMode, Perspective } from '../entity/player.js';
 import { PlayerModel } from '../entity/player-model.js';
+import { MobManager } from '../entity/mobs.js';
 import { Inventory } from './inventory.js';
 import { Interaction } from './interaction.js';
 import { Particles } from './particles.js';
@@ -78,6 +79,7 @@ export class Game {
 
     this._tint = [1, 1, 1];
     this._probe = new THREE.Vector3();
+    this._bufferSize = new THREE.Vector2();
   }
 
   // -------------------------------------------------------------------------
@@ -104,6 +106,7 @@ export class Game {
       worldType: meta.worldType,
       caveDensity: meta.caveDensity,
       treeDensity: meta.treeDensity,
+      structureDensity: meta.structureDensity,
       savedEdits,
     });
     this.world.setRenderDistance(this.settings.get('renderDistance'));
@@ -140,6 +143,12 @@ export class Game {
     // terrain under a stored position changed.
     this.settleOnGround();
 
+    // Seed the spawn area with animals before the first frame. Left to the
+    // ordinary spawner the world would be empty for the first half minute,
+    // which is exactly when a player is deciding whether it feels alive.
+    onProgress(0.97, 'Waking the animals');
+    if (this.settings.get('animals')) this.mobs.populate(this.player.position);
+
     if (this.spawnBiome !== undefined) {
       this.hud.toast(`Welcome to ${getBiome(this.spawnBiome).display}`, { seconds: 4.5 });
     }
@@ -169,6 +178,14 @@ export class Game {
     this.viewModel = new ViewModel(this.atlas);
     this.playerModel = new PlayerModel(scene, this.atlas);
 
+    this.mobs = new MobManager({
+      scene,
+      world: this.world,
+      atlas: this.atlas,
+      audio: this.audio,
+    });
+    this.mobs.onDeath = (mob) => this.onMobDeath(mob);
+
     this.interaction = new Interaction({
       world: this.world,
       player: this.player,
@@ -179,6 +196,7 @@ export class Game {
       highlight: this.highlight,
       viewModel: this.viewModel,
       playerModel: this.playerModel,
+      mobs: this.mobs,
     });
 
     this.hud = new Hud({ root: this.dom.hud, inventory: this.inventory });
@@ -330,6 +348,12 @@ export class Game {
       case 'clouds':
         this.sky.setCloudCoverage(value ? 0.5 : 1.2);
         break;
+      case 'animals':
+        this.mobs.enabled = value;
+        break;
+      case 'animalDensity':
+        this.mobs.density = value;
+        break;
       default:
         break;
     }
@@ -365,6 +389,7 @@ export class Game {
     this.world.update(this.player.position, budget);
 
     this.updateSky(delta);
+    this.mobs.update(delta, this.player.position);
     this.particles.update(delta, this.world);
     this.updateAmbient(delta);
 
@@ -387,7 +412,7 @@ export class Game {
     });
     this.debug.update(delta, {
       engine: this.engine, world: this.world, sky: this.sky,
-      player: this.player, atlas: this.atlas, meta: this.meta,
+      player: this.player, atlas: this.atlas, meta: this.meta, mobs: this.mobs,
     });
     this.chat.update();
 
@@ -491,7 +516,9 @@ export class Game {
     const brightness = this.settings.get('brightness');
 
     const heldId = this.inventory.selectedId;
-    this.viewModel.setHeld(this.player.gameMode === GameMode.SPECTATOR ? 0 : heldId);
+    const shown = this.player.gameMode === GameMode.SPECTATOR ? 0 : heldId;
+    this.viewModel.setHeld(shown);
+    this.playerModel.setHeld(shown);
     this.viewModel.enabled = this.player.perspective === Perspective.FIRST && !this.player.dead;
 
     let tint = null;
@@ -506,6 +533,28 @@ export class Game {
       brightness,
       cameraDistance: this.engine.camera.position.distanceTo(eye),
     });
+    this.mobs.applySky(this.sky, brightness);
+  }
+
+  /**
+   * An animal died: scatter it, and hand over whatever it was carrying.
+   *
+   * There are no item entities in this world, so a drop goes straight into the
+   * inventory. Announcing it matters — a silent gain is indistinguishable from
+   * nothing having happened.
+   */
+  onMobDeath(mob) {
+    const colour = [mob.tint[0] * 0.7, mob.tint[1] * 0.7, mob.tint[2] * 0.7];
+    this.particles.blockBreak(
+      mob.position.x - 0.5, mob.position.y + mob.height * 0.4, mob.position.z - 0.5,
+      colour, 22,
+    );
+    if (this.player.gameMode !== GameMode.SURVIVAL || mob.drop === null) return;
+    const count = 1 + Math.floor(Math.random() * 2);
+    const leftover = this.inventory.add(mob.drop, count);
+    if (leftover >= count) return;
+    this.audio.effect('pickup', { gain: 0.5 });
+    this.hud.toast(`+${count - leftover} ${getBlock(mob.drop).display}`, { seconds: 1.6 });
   }
 
   updateAutosave(delta) {
@@ -522,12 +571,52 @@ export class Game {
       });
   }
 
+  /**
+   * What casts a shadow, and what must be kept out of the depth pass.
+   *
+   * Rebuilt in place rather than allocated: this runs once a frame, and the
+   * membership only changes when a system is added to the session.
+   */
+  shadowPlan() {
+    const plan = this._shadowPlan ?? (this._shadowPlan = { chunks: null, casters: [], hidden: [] });
+    plan.chunks = this.world.group;
+    plan.casters[0] = this.mobs.mesh;
+    plan.casters[1] = this.playerModel.group;
+    // The sky is the light source, particles are too small to read as shadows,
+    // and the selection box is a UI element that happens to live in the world.
+    plan.hidden[0] = this.sky.mesh;
+    plan.hidden[1] = this.particles.points;
+    plan.hidden[2] = this.highlight.outline;
+    plan.hidden[3] = this.highlight.cracks;
+    return plan;
+  }
+
   render() {
     // Nothing can be drawn without a GPU context, and a screenshot taken
     // without one is a blank file rather than a picture of the world.
     if (this.engine.contextLost) return;
-    this.engine.render();
-    this.viewModel.render(this.engine.renderer);
+    const renderer = this.engine.renderer;
+
+    if (this.shadows?.enabled) {
+      this.shadows.update(this.sky.sunDirection, this.player.position);
+      this.shadows.render(renderer, this.engine.scene, this.shadowPlan());
+      this.materials.applyShadowMap(this.shadows);
+    }
+
+    if (this.post?.enabled) {
+      // The world and the held item go into the same buffer, so both are
+      // graded and bloomed together rather than the item being pasted on.
+      this.post.setSize(...this.engine.getDrawingBufferSize(this._bufferSize));
+      this.post.begin(renderer);
+      this.engine.render();
+      this.viewModel.render(renderer);
+      this.post.render(renderer, this.engine.camera, this.sky, this.underwater);
+    } else {
+      renderer.setRenderTarget(null);
+      this.engine.render();
+      this.viewModel.render(renderer);
+    }
+
     if (this.pendingScreenshot) this.captureScreenshot();
   }
 
@@ -699,6 +788,7 @@ export class Game {
     this.highlight.dispose();
     this.viewModel.dispose();
     this.playerModel.dispose();
+    this.mobs.dispose();
     this.world.dispose();
     this.hud.setVisible(false);
     this.inventoryUI.dispose();

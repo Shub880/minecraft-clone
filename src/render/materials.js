@@ -89,6 +89,82 @@ const VERTEX_SHADER = /* glsl */ `
  * the GPU carry a tangent per vertex to say the same thing this says in four
  * instructions — using data the rasteriser already has.
  */
+/**
+ * Sun shadowing, in its own chunk so the fast path never compiles it.
+ *
+ * Two things are layered here. The shadow map answers "can this pixel see the
+ * sun", which gives trees and buildings shadows that move with the day. The
+ * cloud field answers "is a cloud in the way", which is what makes an open
+ * field breathe as cover drifts over it — the single cheapest effect on this
+ * list and, over a wide landscape, one of the most convincing.
+ */
+const SHADOW_CHUNK = /* glsl */ `
+  uniform sampler2D uShadowMap;
+  uniform mat4 uShadowMatrix;
+  uniform vec2 uShadowTexel;
+  uniform float uShadowBias;
+  uniform float uShadowNormalBias;
+  uniform float uCloudShadow;
+
+  float hashCloud(vec2 p) {
+    p = fract(p * vec2(233.34, 851.73));
+    p += dot(p, p + 23.45);
+    return fract(p.x * p.y);
+  }
+
+  float cloudNoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hashCloud(i);
+    float b = hashCloud(i + vec2(1.0, 0.0));
+    float c = hashCloud(i + vec2(0.0, 1.0));
+    float d = hashCloud(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+  }
+
+  /** Drifting cover overhead, projected straight down onto the world. */
+  float cloudShadow(vec3 worldPos) {
+    if (uCloudShadow <= 0.001) return 1.0;
+    vec2 p = worldPos.xz * 0.011 + vec2(uTime * 0.006, uTime * 0.003);
+    float density = cloudNoise(p) * 0.62 + cloudNoise(p * 2.7) * 0.38;
+    // Only the denser half of the field casts anything, so the ground is
+    // mostly lit with occasional cover rather than permanently dappled.
+    return 1.0 - smoothstep(0.52, 0.78, density) * uCloudShadow;
+  }
+
+  /**
+   * 1 where the sun reaches, 0 in shadow.
+   *
+   * The sample point is pushed along the surface normal before projection
+   * rather than only biased in depth. A depth bias alone has to be large
+   * enough for the worst-case slope in the scene, and at that size it detaches
+   * every shadow from the thing casting it; a normal offset scales with the
+   * texel footprint instead and leaves contact shadows attached.
+   */
+  float sunShadow(vec3 worldPos, vec3 normal) {
+    vec4 lightSpace = uShadowMatrix * vec4(worldPos + normal * uShadowNormalBias, 1.0);
+    vec3 projected = lightSpace.xyz / lightSpace.w;
+    if (projected.z > 1.0) return 1.0;
+
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        vec2 offset = vec2(float(x), float(y)) * uShadowTexel;
+        float depth = texture(uShadowMap, projected.xy + offset).r;
+        lit += projected.z - uShadowBias <= depth ? 1.0 : 0.0;
+      }
+    }
+    lit /= 9.0;
+
+    // Dissolve at the edge of the covered box, so its boundary is never a
+    // visible line drawn across the landscape.
+    vec2 fromCentre = abs(projected.xy - 0.5) * 2.0;
+    float edge = smoothstep(0.75, 1.0, max(fromCentre.x, fromCentre.y));
+    return mix(lit, 1.0, edge);
+  }
+`;
+
 const LIGHTING_CHUNK = /* glsl */ `
   uniform sampler2DArray uSurface;
   uniform float uSpecular;
@@ -160,6 +236,10 @@ const FRAGMENT_SHADER = /* glsl */ `
     ${LIGHTING_CHUNK}
   #endif
 
+  #ifdef SHADOWS
+    ${SHADOW_CHUNK}
+  #endif
+
   // Index 6 is the "flat" face used by plants: no directional shading.
   const vec3 FACE_NORMALS[7] = vec3[7](
     vec3( 1.0, 0.0, 0.0), vec3(-1.0, 0.0, 0.0),
@@ -222,7 +302,20 @@ const FRAGMENT_SHADER = /* glsl */ `
     float sunDot = max(dot(normal, uSunDirection), 0.0);
     float direct = 0.6 + 0.4 * sunDot;
 
-    vec3 skyLight = mix(uAmbientColor, uSunColor, direct * 0.65) * sky;
+    // 1 in full sun, 0 in shadow. Plants are flat cards whose normals point at
+    // the camera, so they are offset along the geometric up instead.
+    float sunlit = 1.0;
+    #ifdef SHADOWS
+      vec3 offsetNormal = face == 6 ? vec3(0.0, 1.0, 0.0) : geometryNormal;
+      sunlit = sunShadow(vWorldPos, offsetNormal) * cloudShadow(vWorldPos);
+    #endif
+
+    // Shadowed ground keeps the sky's ambient and loses the sun, so it goes
+    // blue and cool rather than simply dark — which is what shadow actually
+    // looks like outdoors, and what a flat multiply gets wrong.
+    vec3 skyLight = mix(uAmbientColor, uSunColor, direct * 0.65 * mix(0.2, 1.0, sunlit)) * sky;
+    skyLight *= mix(0.6, 1.0, sunlit);
+
     vec3 lighting = uAmbientColor * 0.06
                   + skyLight * facet
                   + TORCH_COLOR * torch;
@@ -235,7 +328,7 @@ const FRAGMENT_SHADER = /* glsl */ `
       // what the surface already reflects, and mixing would darken the albedo
       // wherever the sun happens to catch it.
       color += uSunColor * sunSpecular(normal, viewDir, roughness, sky)
-             * uSpecular * vAO * facet;
+             * uSpecular * vAO * facet * sunlit;
       // Emissive ignores sky and block light — that is the whole point of it —
       // but still respects brightness so the setting stays meaningful.
       color += albedo * emissive * 2.6 * uBrightness;
@@ -259,7 +352,7 @@ const FRAGMENT_SHADER = /* glsl */ `
           normal = normalize(vec3(-slopeX * 0.045 * 8.0, 1.0, -slopeZ * 0.045 * 8.0));
         }
         float glint = sunSpecular(normal, viewDir, 0.04, sky);
-        color += uSunColor * glint * uSpecular * 1.6 * (1.0 - uUnderwater);
+        color += uSunColor * glint * uSpecular * 1.6 * (1.0 - uUnderwater) * sunlit;
       #endif
       // Fresnel: water turns reflective and bright at grazing angles, which is
       // what makes a lake read as a surface rather than a blue floor.
@@ -275,6 +368,14 @@ const FRAGMENT_SHADER = /* glsl */ `
     // instead of terminating in a visible wall of flat colour.
     float horizon = clamp(viewDir.y * 0.5 + 0.5, 0.0, 1.0);
     vec3 fogColor = mix(uFogHorizon, uFogZenith, horizon * horizon);
+
+    // Forward scattering: air lit from behind glows toward the light. Looking
+    // into the sun the haze warms and brightens, away from it it stays cool.
+    // This is what makes distance read as air rather than as a grey wash.
+    // A tight exponent matters: spread wide it stops being a glow around the
+    // sun and becomes a milky wash over the whole distance.
+    float towardSun = max(dot(viewDir, uSunDirection), 0.0);
+    fogColor = mix(fogColor, uSunColor, pow(towardSun, 9.0) * 0.32 * uDaylight);
 
     float d = vViewDepth * uFogDensity;
     float fogFactor = 1.0 - exp(-d * d);
@@ -304,10 +405,19 @@ export class WorldMaterials {
    */
   constructor(atlasTexture, surfaceTexture = null) {
     this.fancy = true;
+    this.shadows = false;
     this.uniforms = {
       uAtlas: { value: atlasTexture },
       uSurface: { value: surfaceTexture },
       uSpecular: { value: 1 },
+      uShadowMap: { value: null },
+      uShadowMatrix: { value: new THREE.Matrix4() },
+      uShadowTexel: { value: new THREE.Vector2(1 / 2048, 1 / 2048) },
+      // Small enough that contact shadows stay attached, large enough that a
+      // lit floor does not stripe itself. Retuned whenever quality changes.
+      uShadowBias: { value: 0.0006 },
+      uShadowNormalBias: { value: 0.09 },
+      uCloudShadow: { value: 0.55 },
       uTime: { value: 0 },
       uWindStrength: { value: 0.06 },
       uSunDirection: { value: new THREE.Vector3(0.4, 0.8, 0.3).normalize() },
@@ -333,6 +443,7 @@ export class WorldMaterials {
     if (mode === 'cutout') defines.CUTOUT = '';
     if (mode === 'water') defines.WATER = '';
     if (this.fancy) defines.FANCY = '';
+    if (this.shadows) defines.SHADOWS = '';
 
     const material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
@@ -369,6 +480,42 @@ export class WorldMaterials {
     }
   }
 
+  /**
+   * Turn cast shadows on or off.
+   *
+   * Like `setFancy`, this is a define rather than a branch: a shadow lookup
+   * costs nine texture fetches per pixel and there is no point paying for a
+   * disabled one. The chunk meshes point at the same material objects
+   * throughout, so nothing downstream has to be rebuilt.
+   */
+  setShadows(enabled) {
+    const next = Boolean(enabled);
+    if (next === this.shadows) return;
+    this.shadows = next;
+    for (const material of [this.opaque, this.cutout, this.water]) {
+      if (next) material.defines.SHADOWS = '';
+      else delete material.defines.SHADOWS;
+      material.needsUpdate = true;
+    }
+  }
+
+  /** Point the shader at a freshly rendered shadow map. */
+  applyShadowMap(shadows) {
+    if (!shadows) return;
+    this.uniforms.uShadowMap.value = shadows.depthTexture;
+    this.uniforms.uShadowMatrix.value.copy(shadows.matrix);
+    this.uniforms.uShadowTexel.value.copy(shadows.texel);
+    // Depth precision is spread over the whole light frustum, so a wider box
+    // needs a proportionally larger bias to stay free of acne.
+    this.uniforms.uShadowBias.value = 0.00035 + shadows.radius * 0.000012;
+    this.uniforms.uShadowNormalBias.value = shadows.worldTexel * 1.4;
+  }
+
+  /** How much drifting cloud cover dims the ground, 0..1. */
+  setCloudShadow(amount) {
+    this.uniforms.uCloudShadow.value = Math.max(0, Math.min(1, amount));
+  }
+
   /** Strength of the sun highlight, 0 to switch it off without losing relief. */
   setSpecular(strength) {
     this.uniforms.uSpecular.value = Number.isFinite(strength) ? strength : 1;
@@ -396,7 +543,9 @@ export class WorldMaterials {
   /** Fog density is derived from render distance so the far plane is hidden. */
   setRenderDistance(chunks) {
     const blocks = chunks * 16;
-    this.uniforms.uFogDensity.value = 1.6 / blocks;
+    // Just enough to dissolve the loaded edge. Denser than this and the middle
+    // distance goes flat, which the sun scattering then amplifies.
+    this.uniforms.uFogDensity.value = 1.32 / blocks;
   }
 
   setUnderwater(amount) {

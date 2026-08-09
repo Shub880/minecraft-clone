@@ -36,11 +36,26 @@ const VERTEX_SHADER = /* glsl */ `
   varying float vShade;
   varying vec3 vNormal;
 
+  #ifdef VERTEX_TINT
+    // Mobs are drawn as one merged mesh, so their colour — a sheep's fleece,
+    // a hurt animal's red flash — has to ride on the vertices rather than on
+    // a uniform that could only describe one animal at a time.
+    attribute vec3 aTint;
+    // x is skylight, y is block light, both already 0..1.
+    attribute vec2 aLight;
+    varying vec3 vVertexTint;
+    varying vec2 vVertexLight;
+  #endif
+
   void main() {
     vUv = uv;
     vLayer = layer;
     vShade = faceShade;
     vNormal = normalize(mat3(modelMatrix) * normal);
+    #ifdef VERTEX_TINT
+      vVertexTint = aTint;
+      vVertexLight = aLight;
+    #endif
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
@@ -63,6 +78,11 @@ const FRAGMENT_SHADER = /* glsl */ `
   varying float vShade;
   varying vec3 vNormal;
 
+  #ifdef VERTEX_TINT
+    varying vec3 vVertexTint;
+    varying vec2 vVertexLight;
+  #endif
+
   const vec3 TORCH_COLOR = vec3(1.0, 0.64, 0.32);
 
   vec3 toLinear(vec3 c) {
@@ -72,21 +92,34 @@ const FRAGMENT_SHADER = /* glsl */ `
   void main() {
     vec4 texel = texture(uAtlas, vec3(vUv, vLayer));
 
+    #ifdef VERTEX_TINT
+      vec3 tint = vVertexTint;
+      float skyLevel = vVertexLight.x;
+      float torchLevel = vVertexLight.y;
+    #else
+      vec3 tint = uTint;
+      float skyLevel = 1.0;
+      float torchLevel = uBlockLight;
+    #endif
+
     #ifdef CUTOUT
       // Plants and torches: alpha really is a cutout mask.
       if (texel.a < 0.5) discard;
-      vec3 albedo = toLinear(texel.rgb) * uTint;
+      vec3 albedo = toLinear(texel.rgb) * tint;
     #else
       // Everything else: alpha is a *tint mask*, exactly as in the world
       // shader. Discarding on it would erase a grass block's entire top face,
       // which is painted greyscale with alpha 0 so the biome tint can colour it.
-      vec3 albedo = toLinear(texel.rgb) * mix(uTint, vec3(1.0), texel.a);
+      vec3 albedo = toLinear(texel.rgb) * mix(tint, vec3(1.0), texel.a);
     #endif
 
     float sun = max(dot(vNormal, uSunDirection), 0.0);
-    vec3 light = uAmbientColor * (0.28 + 0.35 * uDaylight)
-               + uSunColor * uDaylight * (0.35 + 0.5 * sun)
-               + TORCH_COLOR * uBlockLight;
+    // skyLevel is how much of the sky reaches this model: 1 for the held item
+    // and the avatar, which are always beside the camera, and the sampled
+    // skylight for a mob, which may well be standing in a cave.
+    vec3 light = uAmbientColor * (0.28 + 0.35 * uDaylight * skyLevel)
+               + uSunColor * uDaylight * skyLevel * (0.35 + 0.5 * sun)
+               + TORCH_COLOR * torchLevel;
 
     gl_FragColor = vec4(albedo * light * vShade * uBrightness, 1.0);
 
@@ -101,12 +134,19 @@ const FRAGMENT_SHADER = /* glsl */ `
  * different block-light levels.
  *
  * @param {THREE.DataArrayTexture} atlasTexture
- * @param {{cutout?: boolean}} [options]  `cutout` treats alpha as a cutout mask
- *   rather than a tint mask — correct for plants, wrong for everything else.
+ * @param {{cutout?: boolean, vertexTint?: boolean}} [options]  `cutout` treats
+ *   alpha as a cutout mask rather than a tint mask — correct for plants, wrong
+ *   for everything else. `vertexTint` reads the colour and skylight from
+ *   per-vertex attributes instead of uniforms, which is what lets many mobs
+ *   share one mesh.
  */
-export function createModelMaterial(atlasTexture, { cutout = false } = {}) {
+export function createModelMaterial(atlasTexture, { cutout = false, vertexTint = false } = {}) {
+  const defines = {};
+  if (cutout) defines.CUTOUT = '';
+  if (vertexTint) defines.VERTEX_TINT = '';
+
   const material = new THREE.ShaderMaterial({
-    defines: cutout ? { CUTOUT: '' } : {},
+    defines,
     uniforms: {
       uAtlas: { value: atlasTexture },
       uSunDirection: { value: new THREE.Vector3(0.4, 0.8, 0.3).normalize() },

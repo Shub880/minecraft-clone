@@ -105,6 +105,26 @@ export class Engine {
     this.resize();
   }
 
+  /**
+   * Hand tone mapping over to the post-processing chain, or take it back.
+   *
+   * Only one of the two may do it. With the chain running, the scene is
+   * rendered into a floating-point buffer and has to stay linear until the
+   * composite; tone mapping on the way in would clip the highlights that the
+   * bloom and sun shafts exist to find. Flipping this recompiles every
+   * material once, which is why it is a setting rather than a per-frame call.
+   */
+  setToneMapping(enabled) {
+    const next = enabled ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+    if (this.renderer.toneMapping === next) return;
+    this.renderer.toneMapping = next;
+  }
+
+  /** Size of the actual drawing buffer, in device pixels. */
+  getDrawingBufferSize(out = new THREE.Vector2()) {
+    return this.renderer.getDrawingBufferSize(out);
+  }
+
   setRenderScale(scale) {
     this.renderScale = Math.max(0.25, Math.min(2, scale));
     this.resize();
